@@ -34,18 +34,24 @@ export interface ImportResult {
   columns: { header: string; use: string }[];
 }
 
-type Field = "name" | "pool" | "role" | "grade" | "batting" | "bowling" | "base" | "notes" | "photo" | "skip" | "detail";
+type Field =
+  | "name" | "pool" | "role" | "grade" | "batting" | "bowling" | "base" | "notes" | "photo" | "availability"
+  | "skip" | "unused" | "detail";
 
 const DEFAULT_ORDER: Field[] = ["name", "role", "grade", "batting", "bowling", "base", "notes"];
 
-const PRIVATE = /e-?mail|phone|mobile|contact|whats ?app|timestamp|roll|prn|aadha?r|enrol|\bid\b|password|address|dob|date of birth|parent|guardian|upi|payment|transaction|fee|signature|declaration|agree|consent/;
+const PRIVATE = /e-?mail|phone|mobile|contact|whats ?app|timestamp|roll|prn|aadha?r|enrol|\bid\b|password|address|flat|house|apartment|wing|tower|society|dob|date of birth|parent|guardian|upi|payment|receipt|transaction|fee|signature|declaration|undertaking|agree|consent/;
+// Not private, but not useful on a player card.
+const UNUSED = /t ?shirt|jersey|size|^column \d+$|^[a-z]$/;
 
 /** Maps a header cell to a field by keyword. */
 export function classifyHeader(raw: string): Field {
   const h = raw.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
   if (!h) return "skip";
   if (PRIVATE.test(h)) return "skip";
+  if (UNUSED.test(h)) return "unused";
   if (/photo|picture|image|pic\b|selfie/.test(h)) return "photo";
+  if (/availab/.test(h)) return "availability";
   if (/^(full |player |your )?name\b|name of (the )?player|^player$/.test(h)) return "name";
   if (/gender|^pool$|^sex$|men women|category/.test(h) && !/grade/.test(h)) return "pool";
   if (/grade|^tier$/.test(h)) return "grade";
@@ -53,8 +59,18 @@ export function classifyHeader(raw: string): Field {
   if (/batting|bat hand|batting hand|^bat$/.test(h)) return "batting";
   if (/bowling|^bowl$/.test(h)) return "bowling";
   if (/role|speciali|specialty|you play as|playing as|^type$/.test(h)) return "role";
-  if (/^notes?$|remarks?|^stats$|stats notes|about/.test(h)) return "notes";
+  if (/^notes?$|remarks?|^stats$|stats notes|about|additional info/.test(h)) return "notes";
   return "detail";
+}
+
+/** Best guess at a role from free-text batting/bowling answers. */
+export function inferRole(batting: string, bowling: string): PlayerRole {
+  const both = `${batting} ${bowling}`.toLowerCase();
+  if (/keep|\bwk\b/.test(both)) return "Wicket-keeper";
+  const bowl = bowling.toLowerCase().replace(/[^a-z ]/g, "").trim();
+  if (!bowl || /^(none|no|na|nil|not applicable|dont bowl|do not bowl|i dont bowl|nothing)$/.test(bowl)) return "Batter";
+  if (/^(none|no|na|nil|dont bat)$/.test(batting.toLowerCase().replace(/[^a-z ]/g, "").trim())) return "Bowler";
+  return "All-rounder";
 }
 
 export function normalizeRole(raw: string): PlayerRole | null {
@@ -130,7 +146,14 @@ export function parsePlayerImport(text: string, defaultPool: Pool): ImportResult
     headers = rows[0].cells;
     result.columns = headers.map((h, i) => ({
       header: h,
-      use: classified[i] === "skip" ? "ignored (private)" : classified[i] === "detail" ? "card detail" : classified[i],
+      use:
+        classified[i] === "skip"
+          ? "ignored (private)"
+          : classified[i] === "unused"
+            ? "ignored"
+            : classified[i] === "detail"
+              ? "card detail"
+              : classified[i],
     }));
     rows.shift();
   }
@@ -150,7 +173,9 @@ export function parsePlayerImport(text: string, defaultPool: Pool): ImportResult
       result.errors.push({ line, message: "Name is longer than 80 characters" });
       continue;
     }
-    const role = normalizeRole(get("role"));
+    // Registration forms may not ask for a role: infer it from the bowling
+    // answer (admins can correct it per player).
+    const role = hasColumn("role") ? normalizeRole(get("role")) : inferRole(get("batting"), get("bowling"));
     if (!role) {
       result.errors.push({ line, message: `Unknown role "${get("role")}" (use Batter, Bowler, All-rounder or WK)` });
       continue;
@@ -181,6 +206,7 @@ export function parsePlayerImport(text: string, defaultPool: Pool): ImportResult
       base = Number(baseRaw);
     }
     const details: PlayerDetail[] = [];
+    if (get("availability")) details.push({ label: "Availability", value: get("availability").slice(0, 300) });
     order.forEach((f, i) => {
       const value = (cells[i] ?? "").trim();
       if (f === "detail" && value && headers[i]) {

@@ -36,6 +36,7 @@ export function PlayerDeckCard({
 }) {
   const [flipped, setFlipped] = useState(false);
   const theme = GRADE_THEME[player.grade] ?? GRADE_THEME.C;
+  const availability = (player.details ?? []).find((d) => /^availab/i.test(d.label))?.value;
   const facts = [
     player.batting_style && { label: "Batting", value: player.batting_style },
     player.bowling_style && { label: "Bowling", value: player.bowling_style },
@@ -74,6 +75,12 @@ export function PlayerDeckCard({
             <span className="rounded-lg bg-slate-950/70 px-2 py-1 text-xs font-bold backdrop-blur">{POOL_LABEL[player.pool]}</span>
           </div>
           <div className="absolute inset-x-0 bottom-0 p-4">
+            {availability && (
+              <p className="mb-1.5 inline-flex max-w-full items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[11px] font-semibold text-emerald-200 ring-1 ring-emerald-400/40">
+                <span aria-hidden>📅</span>
+                <span className="truncate">{availability}</span>
+              </p>
+            )}
             <p className="text-sm font-semibold text-amber-300">
               {ROLE_ICON[player.role]} {player.role}
             </p>

@@ -134,4 +134,36 @@ describe("bulk import", () => {
     expect(photoUrlFrom("https://example.com/a.jpg")).toBe("https://example.com/a.jpg");
     expect(photoUrlFrom("not a link")).toBeNull();
   });
+
+  it("imports the society registration sheet format", () => {
+    const header = [
+      "Timestamp", "Email Address", "Full Name", "Contact Number", "Flat Number", "Age", "Gender", "Batting Style",
+      "Bowling Style", "T-Shirt Size - Male", "T-Shirt Size - Female", "Availability (Nov 2025) - 7:30 am till 1:00 pm",
+      "Additional Information", "Upload Your Photo", "Please upload receipt of your registration payment",
+      "Undertaking and Declaration", "Column 16", "Column 17", "Column 16", "I",
+    ];
+    const rows = [
+      ["10/1/2025 9:00", "a@b.com", "Rohan Patil", "9876543210", "B-1203", "29", "Male", "Right-hand", "Right-arm medium", "L", "", "All days", "Opening batter", "https://drive.google.com/open?id=1PhotoIdXyz12345", "https://drive.google.com/open?id=1ReceiptId999999", "I agree", "", "", "", ""],
+      ["10/1/2025 9:05", "c@d.com", "Anita Rao", "9123456780", "C-402", "34", "Female", "Left-hand", "None", "", "M", "Sat & Sun only", "", "", "https://drive.google.com/open?id=1ReceiptId888888", "I agree", "", "", "", ""],
+      ["10/1/2025 9:07", "e@f.com", "Vik Shah", "9000000000", "A-101", "41", "Male", "Right-hand", "Wicket keeper", "XL", "", "All days", "", "", "", "I agree", "", "", "", ""],
+    ];
+    const r = parsePlayerImport([header, ...rows].map((c) => c.join("\t")).join("\n"), "men");
+    expect(r.errors).toEqual([]);
+    const [rohan, anita, vik] = r.players;
+    expect(rohan).toMatchObject({
+      name: "Rohan Patil", pool: "men", role: "All-rounder", grade: "C", batting_style: "Right-hand",
+      bowling_style: "Right-arm medium", notes: "Opening batter",
+      photo_url: "https://lh3.googleusercontent.com/d/1PhotoIdXyz12345=w800",
+      details: [{ label: "Availability", value: "All days" }, { label: "Age", value: "29" }],
+    });
+    expect(anita).toMatchObject({ pool: "women", role: "Batter", photo_url: null, details: [{ label: "Availability", value: "Sat & Sun only" }, { label: "Age", value: "34" }] });
+    expect(vik.role).toBe("Wicket-keeper");
+    // Nothing private or irrelevant reaches the public card.
+    const json = JSON.stringify(r.players);
+    for (const leak of ["a@b.com", "9876543210", "B-1203", "ReceiptId", "I agree", "\"L\"", "10/1/2025"]) expect(json).not.toContain(leak);
+    const use = Object.fromEntries(r.columns.map((c) => [c.header, c.use]));
+    expect(use["Flat Number"]).toBe("ignored (private)");
+    expect(use["T-Shirt Size - Male"]).toBe("ignored");
+    expect(use["Availability (Nov 2025) - 7:30 am till 1:00 pm"]).toBe("availability");
+  });
 });
