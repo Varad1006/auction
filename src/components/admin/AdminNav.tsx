@@ -33,6 +33,14 @@ export function AdminNav() {
             </Link>
           );
         })}
+        <a
+          href="/display"
+          target="_blank"
+          rel="noreferrer"
+          className="ml-auto whitespace-nowrap px-3 py-3 text-sm font-semibold text-amber-300 hover:text-amber-200"
+        >
+          Projector view ↗
+        </a>
       </div>
     </nav>
   );

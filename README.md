@@ -190,6 +190,12 @@ availability and notes on the player card. **CSV** exports everything (useful fo
   Install app). The bid bar at the bottom shows one-tap bids, with the reason
   whenever a bid isn't allowed.
 - **Viewers:** just share the site URL. No sign-in needed.
+- **Projector / TV:** open `https://<your-site>/display` on the laptop connected to the projector
+  (also linked as *Projector view ↗* in the admin menu) and click **Full screen**. It shows the
+  wheel, the player, the current bid and team purses in large type, and updates live.
+- **Outbid alerts:** owners' phones beep, vibrate and show a message when another team takes the
+  lead, and chime when they win a player. The 🔔 button in the bid bar mutes it. Phones only allow
+  sound after the owner has tapped the page once.
 - **Export:** Admin → Results → *Squads CSV* / *Results log CSV*.
 
 ### Limits

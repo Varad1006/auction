@@ -172,6 +172,8 @@ const race = await Promise.all([
 ]);
 const wins = race.filter((r) => r.status === 200).length;
 check(wins === 1, `simultaneous equal bids: exactly one accepted (${race.map((r) => r.body?.code ?? "ok").join(", ")})`);
+await ownerPage.getByText(/Outbid!/).waitFor({ timeout: 5000 });
+check(true, "owner 1 gets an outbid alert when another team takes the lead");
 const after = await rest(`auction_state?select=bid_count,current_bid`);
 check(after.body[0].bid_count === before.body[0].bid_count + 1, "bid count increased by exactly one");
 
@@ -187,6 +189,8 @@ await adminPage.screenshot({ path: `${SHOTS}/06-admin-bidding.png`, fullPage: tr
 await adminPage.getByRole("button", { name: /^SOLD to/ }).click();
 await Promise.all([viewerPage, ownerPage].map((p) => p.getByText("Sold", { exact: true }).first().waitFor({ timeout: 5000 })));
 check(true, "SOLD stamp appears on viewer and owner phones");
+await ownerPage.getByText(/You won the player/).waitFor({ timeout: 5000 });
+check(true, "owner 1 is told they won the player");
 await viewerPage.screenshot({ path: `${SHOTS}/07-viewer-sold.png`, fullPage: true });
 const sold = (await rest(`players?select=status,sold_team_id,sold_price&name=eq.${encodeURIComponent(playerName)}`)).body[0];
 check(sold.status === "sold" && sold.sold_team_id === o1.teamId, "player recorded as sold to owner 1's team");
