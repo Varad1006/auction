@@ -11,7 +11,7 @@ export function LivePage() {
   const { me } = useMe();
   const ownerTeam = me?.role === "owner" ? me.teamId : null;
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
       <div className="space-y-6">
         <Stage />
         <RecentBids limit={8} title="Latest bids" />

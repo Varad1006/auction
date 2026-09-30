@@ -6,7 +6,7 @@ import { cn, money } from "@/lib/format";
 import type { ImportedPlayer } from "@/lib/import";
 import { resizeImage } from "@/lib/image";
 import { basePriceFor } from "@/lib/rules";
-import { GRADES, PLAYER_ROLES, POOL_LABEL, POOLS, type Grade, type Player, type PlayerRole, type Pool } from "@/lib/types";
+import { PLAYER_ROLES, POOL_LABEL, POOLS, type Player, type PlayerRole, type Pool } from "@/lib/types";
 import { PlayerAvatar } from "../live/PlayerCard";
 import { TeamBadge } from "../live/TeamBadge";
 import { useAuction } from "../live/useAuction";
@@ -87,7 +87,7 @@ export function PlayersManager() {
                     {onBlock(p) && <span className="ml-2 rounded bg-amber-400 px-1.5 text-[10px] font-bold uppercase text-amber-950">On block</span>}
                   </p>
                   <p className="truncate text-xs text-slate-400">
-                    {POOL_LABEL[p.pool]} · {p.role} · Grade {p.grade} · base {money(p.base_price)}
+                    {POOL_LABEL[p.pool]} · {p.role} · base {money(p.base_price)}
                   </p>
                 </div>
                 <div className="hidden shrink-0 text-right text-xs sm:block">
@@ -156,7 +156,6 @@ function PlayerForm({ player, onCreated, onClose }: { player: Player | null; onC
     name: player?.name ?? "",
     pool: player?.pool ?? ("men" as Pool),
     role: player?.role ?? ("Batter" as PlayerRole),
-    grade: player?.grade ?? ("C" as Grade),
     batting_style: player?.batting_style ?? "",
     bowling_style: player?.bowling_style ?? "",
     base_price: player ? String(player.base_price) : "",
@@ -166,7 +165,7 @@ function PlayerForm({ player, onCreated, onClose }: { player: Player | null; onC
   });
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((s) => ({ ...s, [k]: v }));
   const cfg = configs[f.pool];
-  const defaultBase = cfg ? basePriceFor(cfg, f.grade) : undefined;
+  const defaultBase = cfg ? basePriceFor(cfg, "C") : undefined;
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -174,7 +173,6 @@ function PlayerForm({ player, onCreated, onClose }: { player: Player | null; onC
       name: f.name,
       pool: f.pool,
       role: f.role,
-      grade: f.grade,
       batting_style: f.batting_style || null,
       bowling_style: f.bowling_style || null,
       base_price: f.base_price === "" ? null : Number(f.base_price),
@@ -221,14 +219,7 @@ function PlayerForm({ player, onCreated, onClose }: { player: Player | null; onC
             ))}
           </select>
         </Field>
-        <Field label="Grade">
-          <select className={inputClass} value={f.grade} onChange={(e) => set("grade", e.target.value as Grade)}>
-            {GRADES.map((g) => (
-              <option key={g}>{g}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Base price" hint={defaultBase !== undefined ? `Leave empty for the grade default (${money(defaultBase)})` : undefined}>
+        <Field label="Base price" hint={defaultBase !== undefined ? `Leave empty for the pool base price (${money(defaultBase)})` : undefined}>
           <input className={inputClass} inputMode="numeric" value={f.base_price} onChange={(e) => set("base_price", e.target.value.replace(/\D/g, ""))} />
         </Field>
         <Field label="Batting style">
@@ -379,9 +370,9 @@ function ImportForm({ onDone }: { onDone: () => void }) {
     <div className="space-y-4">
       <p className="text-sm text-slate-400">
         In Google Sheets select all cells <b>including the header row</b>, copy, and paste here. Columns are matched by
-        name (name, gender, role, batting, bowling, grade, base price, photo…). Private columns like email, phone and
-        roll number are skipped; every other column becomes a detail on the player card. Missing grade defaults to C and
-        empty base price uses the grade default. Drive photo links must be shared as &ldquo;Anyone with the link&rdquo;.
+        name (name, gender, role, batting, bowling, base price, photo…). Private columns like email, phone and
+        flat number are skipped; every other column becomes a detail on the player card. Empty base price uses the
+        pool&rsquo;s base price. Drive photo links must be shared as &ldquo;Anyone with the link&rdquo;.
       </p>
       <Field label="Default pool">
         <select className={inputClass} value={pool} onChange={(e) => { setPool(e.target.value as Pool); setPreview(null); }}>
@@ -432,7 +423,7 @@ function ImportForm({ onDone }: { onDone: () => void }) {
           <ul className="max-h-48 overflow-y-auto rounded-lg bg-slate-950 p-2 text-xs text-slate-300 ring-1 ring-white/10">
             {preview.preview.map((p, i) => (
               <li key={i} className="py-0.5">
-                {p.name} · {POOL_LABEL[p.pool]} · {p.role} · {p.grade} · {money(p.base_price)}
+                {p.name} · {POOL_LABEL[p.pool]} · {p.role} · {money(p.base_price)}
               </li>
             ))}
           </ul>

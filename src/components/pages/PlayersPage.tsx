@@ -30,7 +30,7 @@ export function PlayersPage() {
         .filter((p) => !role || p.role === role)
         .filter((p) => !q || p.name.toLowerCase().includes(q.toLowerCase()))
         .sort((a, b) =>
-          status === "sold" ? (b.sold_price ?? 0) - (a.sold_price ?? 0) : a.grade.localeCompare(b.grade) || a.name.localeCompare(b.name),
+          status === "sold" ? (b.sold_price ?? 0) - (a.sold_price ?? 0) : a.name.localeCompare(b.name),
         ),
     [inPool, status, role, q],
   );
@@ -102,7 +102,6 @@ export function PlayersPage() {
                     ) : (
                       <span className="flex h-full items-center justify-center text-3xl font-black text-slate-600">{initials(p.name)}</span>
                     )}
-                    <span className="absolute left-2 top-2 rounded-md bg-slate-950/80 px-1.5 py-0.5 text-xs font-black">{p.grade}</span>
                     {onBlock && <span className="absolute right-2 top-2 rounded-md bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold uppercase">Live</span>}
                     {p.status === "unsold" && (
                       <span className="absolute inset-x-0 bottom-0 bg-slate-950/80 py-1 text-center text-[11px] font-bold uppercase tracking-widest text-slate-300">

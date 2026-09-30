@@ -115,7 +115,7 @@ export function TeamDetailPage({ teamId }: { teamId: string }) {
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-semibold">{p.name}</span>
                       <span className="text-xs text-slate-400">
-                        {p.role} · Grade {p.grade} · Round {p.decided_round ?? "–"}
+                        {p.role} · Round {p.decided_round ?? "–"}
                       </span>
                     </span>
                     <span className="font-bold tabular-nums">{money(p.sold_price)}</span>

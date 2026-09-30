@@ -50,10 +50,10 @@ export async function GET(req: NextRequest) {
         (b.sold_price ?? 0) - (a.sold_price ?? 0),
     );
     csv = toCsv(
-      ["Team", "Player", "Pool", "Role", "Grade", "Batting", "Bowling", "Base price", "Status", "Sold price", "Round", "Notes"],
+      ["Team", "Player", "Pool", "Role", "Batting", "Bowling", "Base price", "Status", "Sold price", "Round", "Notes"],
       sorted.map((p) => [
         p.sold_team_id ? teams.get(p.sold_team_id) : "",
-        p.name, p.pool, p.role, p.grade, p.batting_style, p.bowling_style, p.base_price,
+        p.name, p.pool, p.role, p.batting_style, p.bowling_style, p.base_price,
         p.status, p.sold_price, p.decided_round, p.notes,
       ]),
     );

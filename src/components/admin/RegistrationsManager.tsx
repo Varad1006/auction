@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { callAction } from "@/lib/api";
 import { cn, timeAgo } from "@/lib/format";
 import type { RegistrationSettings } from "@/lib/registration";
-import { GRADES, POOL_LABEL, type Grade, type Pool } from "@/lib/types";
+import { POOL_LABEL, type Pool } from "@/lib/types";
 import { Button, Card, Field, inputClass, useRunner } from "../ui";
 
 interface Registration {
@@ -87,8 +87,8 @@ export function RegistrationsManager() {
               disabled={pending.length === 0}
               busy={busy === "all"}
               onClick={async () => {
-                if (!confirm(`Approve all ${pending.length} pending registrations as Grade C? You can change grades later on the Players page.`)) return;
-                for (const r of pending) await callAction("registration.approve", { id: r.id, grade: "C" }).catch(() => null);
+                if (!confirm(`Approve all ${pending.length} pending registrations and add them to the player pool?`)) return;
+                for (const r of pending) await callAction("registration.approve", { id: r.id }).catch(() => null);
                 await act("all", async () => null, "Pending registrations approved");
               }}
             >
@@ -134,7 +134,6 @@ function RegistrationRow({
   busy: string | null;
   act: (key: string, fn: () => Promise<unknown>, msg: string) => Promise<unknown>;
 }) {
-  const [grade, setGrade] = useState<Grade>("C");
   return (
     <li className="flex flex-col gap-3 rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/10 sm:flex-row">
       <a href={r.photo_url ?? undefined} target="_blank" rel="noreferrer" className="shrink-0">
@@ -177,18 +176,11 @@ function RegistrationRow({
       <div className="flex shrink-0 flex-wrap items-start gap-2 sm:w-44 sm:flex-col sm:items-stretch">
         {r.status === "pending" && (
           <>
-            <select className={cn(inputClass, "py-1.5")} value={grade} onChange={(e) => setGrade(e.target.value as Grade)} aria-label="Grade">
-              {GRADES.map((g) => (
-                <option key={g} value={g}>
-                  Grade {g}
-                </option>
-              ))}
-            </select>
             <Button
               size="sm"
               variant="success"
               busy={busy === `ok-${r.id}`}
-              onClick={() => act(`ok-${r.id}`, () => callAction("registration.approve", { id: r.id, grade }), `${r.full_name} added to players`)}
+              onClick={() => act(`ok-${r.id}`, () => callAction("registration.approve", { id: r.id }), `${r.full_name} added to players`)}
             >
               Approve
             </Button>

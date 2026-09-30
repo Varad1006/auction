@@ -142,13 +142,14 @@ const list = await (await fetch(`${APP}/api/admin/registrations`, { headers: { c
 const reg = list.registrations.find((r) => r.email === email);
 check(reg?.status === "pending" && reg.phone === "98765 43210" && reg.availability === "Sat 8 Nov, Sun 9 Nov", "registration stored as pending with all answers");
 check(Boolean(reg?.photo_url && reg?.receipt_url), "admin gets signed links to the photo and receipt");
-const ok = await act("registration.approve", { id: reg.id, grade: "B" });
+const ok = await act("registration.approve", { id: reg.id });
 check(ok.status === 200, `approve creates the player (${ok.body?.message ?? "ok"})`);
-const again = await act("registration.approve", { id: reg.id, grade: "B" });
+const again = await act("registration.approve", { id: reg.id });
 check(again.status === 409, "a registration can't be approved twice");
 const players = await (await fetch(`${SB_URL}/rest/v1/players?select=*&name=eq.Rohan%20Patil`, { headers: { apikey: ANON, authorization: `Bearer ${ANON}` } })).json();
 const p = players.at(-1);
-check(p?.grade === "B" && p?.role === "All-rounder" && p?.pool === "men" && p?.base_price === 30, "player has the chosen grade, role, pool and grade base price");
+const menBase = (await (await fetch(`${SB_URL}/rest/v1/pool_config?select=base_price_c&pool=eq.men`, { headers: { apikey: ANON, authorization: `Bearer ${ANON}` } })).json())[0].base_price_c;
+check(p?.role === "All-rounder" && p?.pool === "men" && p?.base_price === menBase, "player has the chosen role, pool and the pool base price");
 check(p?.photo_url?.includes("/player-photos/"), "photo copied to the public player-photos bucket");
 check(JSON.stringify(p?.details) === JSON.stringify([{ label: "Availability", value: "Sat 8 Nov, Sun 9 Nov" }, { label: "Age", value: "29" }]), "availability and age become card details");
 check(!JSON.stringify(p).match(/9876543210|B-1203|example\.com/), "no phone, flat or email on the public player");

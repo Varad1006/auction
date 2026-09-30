@@ -31,9 +31,7 @@ function PoolConfigForm({ config }: { config: PoolConfig }) {
     purse: String(config.purse),
     min_squad: String(config.min_squad),
     max_squad: String(config.max_squad),
-    base_price_a: String(config.base_price_a),
-    base_price_b: String(config.base_price_b),
-    base_price_c: String(config.base_price_c),
+    base_price: String(config.base_price_c),
     tiers: formatIncrementTiers(config.increment_tiers),
   });
   const set = (k: keyof typeof f, v: string) => setF((s) => ({ ...s, [k]: v }));
@@ -55,9 +53,10 @@ function PoolConfigForm({ config }: { config: PoolConfig }) {
                 purse: Number(f.purse),
                 min_squad: Number(f.min_squad),
                 max_squad: Number(f.max_squad),
-                base_price_a: Number(f.base_price_a),
-                base_price_b: Number(f.base_price_b),
-                base_price_c: Number(f.base_price_c),
+                // One base price for everyone (grades are not used).
+                base_price_a: Number(f.base_price),
+                base_price_b: Number(f.base_price),
+                base_price_c: Number(f.base_price),
                 increment_tiers: tiers,
               }),
             `${POOL_LABEL[config.pool]} settings saved`,
@@ -73,19 +72,9 @@ function PoolConfigForm({ config }: { config: PoolConfig }) {
         <Field label="Max squad">
           <input className={inputClass} inputMode="numeric" required value={f.max_squad} onChange={(e) => set("max_squad", num(e.target.value))} />
         </Field>
-        <div className="col-span-2 grid grid-cols-3 gap-3">
-          {(["a", "b", "c"] as const).map((g) => (
-            <Field key={g} label={`Base ${g.toUpperCase()}`}>
-              <input
-                className={inputClass}
-                inputMode="numeric"
-                required
-                value={f[`base_price_${g}`]}
-                onChange={(e) => set(`base_price_${g}`, num(e.target.value))}
-              />
-            </Field>
-          ))}
-        </div>
+        <Field label="Base price" className="col-span-2" hint="Every player's starting price in this pool.">
+          <input className={inputClass} inputMode="numeric" required value={f.base_price} onChange={(e) => set("base_price", num(e.target.value))} />
+        </Field>
         <Field
           label="Bid increments"
           className="col-span-2"
@@ -95,7 +84,7 @@ function PoolConfigForm({ config }: { config: PoolConfig }) {
         </Field>
         <p className="col-span-2 text-xs text-slate-500">
           Current round: {config.current_round}. Owners must always keep enough purse to fill their minimum squad at the
-          lowest base price ({money(Math.min(Number(f.base_price_a), Number(f.base_price_b), Number(f.base_price_c)))} per player).
+          base price ({money(Number(f.base_price))} per player).
         </p>
         <div className="col-span-2 flex flex-wrap justify-end gap-2">
           <Button
@@ -103,11 +92,11 @@ function PoolConfigForm({ config }: { config: PoolConfig }) {
             variant="ghost"
             busy={busy === "apply"}
             onClick={() =>
-              confirm(`Set every unsold/undecided ${POOL_LABEL[config.pool].toLowerCase()} player's base price to their grade's saved price?`) &&
+              confirm(`Set the base price of every ${POOL_LABEL[config.pool].toLowerCase()} player who isn't sold yet to the saved base price?`) &&
               run("apply", () => callAction("player.applyBasePrices", { pool: config.pool }), "Base prices applied")
             }
           >
-            Apply base prices to players
+            Apply base price to all players
           </Button>
           <Button type="submit" variant="primary" busy={busy === "save"} disabled={!tiers}>
             Save

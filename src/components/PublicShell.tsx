@@ -14,7 +14,7 @@ const TABS = [
   { href: "/live", label: "Live" },
   { href: "/players", label: "Players" },
   { href: "/teams", label: "Teams" },
-  { href: "/bids", label: "Bids & Results" },
+  { href: "/bids", label: "Results" },
 ];
 
 /** Header, page tabs and (for owners) the bid bar, shared by every public page. */

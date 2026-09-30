@@ -46,7 +46,7 @@ export function OverviewPage() {
             <div className="min-w-0 flex-1">
               <p className="truncate text-2xl font-black">{onBlock.name}</p>
               <p className="text-sm text-slate-400">
-                {onBlock.role} · Grade {onBlock.grade} · {POOL_LABEL[onBlock.pool]}
+                {onBlock.role} · {POOL_LABEL[onBlock.pool]}
               </p>
             </div>
             <div className="text-right">
@@ -66,13 +66,13 @@ export function OverviewPage() {
       </Link>
 
       {/* Pools */}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {POOLS.map((p) => (
           <PoolStats key={p} pool={p} />
         ))}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Top buys */}
         <section>
           <h2 className="mb-3 text-lg font-bold">Top buys</h2>
@@ -124,7 +124,7 @@ export function OverviewPage() {
         </section>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <RecentBids limit={6} />
         <ResultsFeed limit={6} />
       </div>

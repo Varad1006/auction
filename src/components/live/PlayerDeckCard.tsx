@@ -4,11 +4,7 @@ import { useState } from "react";
 import { cn, initials, money, textOn } from "@/lib/format";
 import { POOL_LABEL, type Player, type Team } from "@/lib/types";
 
-const GRADE_THEME: Record<string, { ring: string; chip: string; glow: string; label: string }> = {
-  A: { ring: "from-amber-300 via-yellow-500 to-amber-700", chip: "bg-amber-400 text-amber-950", glow: "shadow-amber-500/30", label: "Gold" },
-  B: { ring: "from-sky-200 via-slate-300 to-sky-600", chip: "bg-sky-300 text-sky-950", glow: "shadow-sky-400/25", label: "Silver" },
-  C: { ring: "from-orange-300 via-amber-700 to-orange-900", chip: "bg-orange-300 text-orange-950", glow: "shadow-orange-500/20", label: "Bronze" },
-};
+const THEME = { ring: "from-amber-300 via-yellow-500 to-amber-700", chip: "bg-amber-400 text-amber-950", glow: "shadow-amber-500/30" };
 
 const ROLE_ICON: Record<string, string> = {
   Batter: "🏏",
@@ -35,7 +31,7 @@ export function PlayerDeckCard({
   size?: "lg" | "md";
 }) {
   const [flipped, setFlipped] = useState(false);
-  const theme = GRADE_THEME[player.grade] ?? GRADE_THEME.C;
+  const theme = THEME;
   const availability = (player.details ?? []).find((d) => /^availab/i.test(d.label))?.value;
   const facts = [
     player.batting_style && { label: "Batting", value: player.batting_style },
@@ -68,9 +64,9 @@ export function PlayerDeckCard({
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/30 to-transparent" />
           <div className="absolute left-3 right-3 top-3 flex items-start justify-between">
-            <span className={cn("rounded-lg px-2.5 py-1 text-center font-black leading-none shadow", theme.chip)}>
-              <span className="block text-2xl">{player.grade}</span>
-              <span className="block text-[9px] uppercase tracking-widest">{theme.label}</span>
+            <span className={cn("rounded-lg px-2.5 py-1.5 text-center font-black leading-none shadow", theme.chip)}>
+              <span className="block text-[9px] uppercase tracking-widest">Base</span>
+              <span className="mt-0.5 block text-lg tabular-nums">{money(player.base_price).replace(/ .*/, "")}</span>
             </span>
             <span className="rounded-lg bg-slate-950/70 px-2 py-1 text-xs font-bold backdrop-blur">{POOL_LABEL[player.pool]}</span>
           </div>
@@ -85,10 +81,7 @@ export function PlayerDeckCard({
               {ROLE_ICON[player.role]} {player.role}
             </p>
             <h3 className={cn("font-black leading-tight tracking-tight text-white", size === "lg" ? "text-3xl" : "text-2xl")}>{player.name}</h3>
-            <div className="mt-2 flex items-center justify-between text-sm">
-              <span className="text-slate-300">
-                Base <b className="text-white">{money(player.base_price)}</b>
-              </span>
+            <div className="mt-2 flex items-center justify-end text-sm">
               <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-slate-200">Tap for details ↻</span>
             </div>
           </div>
@@ -119,7 +112,7 @@ export function PlayerDeckCard({
             <span className="min-w-0">
               <span className="block truncate text-lg font-extrabold">{player.name}</span>
               <span className="block text-xs text-slate-400">
-                {player.role} · Grade {player.grade} · {POOL_LABEL[player.pool]}
+                {player.role} · {POOL_LABEL[player.pool]}
               </span>
             </span>
           </div>

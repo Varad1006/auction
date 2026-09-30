@@ -150,7 +150,7 @@ export function AuctionControls() {
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: t.color }} />
-                    <span className="truncate font-semibold">{t.name}</span>
+                    <span className="truncate font-semibold" title={t.name}>{t.short_name}</span>
                   </span>
                   <span className="shrink-0 text-xs text-slate-400">
                     {busy === `bid-${t.id}` ? "…" : check?.ok ? money(amount) : check?.code === "already_leading" ? "Leading" : check?.message.split(" (")[0]}
@@ -235,7 +235,7 @@ export function AuctionControls() {
             <option value="">Or pick a player without spinning…</option>
             {poolPlayers.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name} · {p.role} · {p.grade}
+                {p.name} · {p.role}
               </option>
             ))}
           </select>

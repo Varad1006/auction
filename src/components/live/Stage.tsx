@@ -56,7 +56,8 @@ export function Stage() {
   if (player && (onBlock || freshResult)) {
     const soldTeam = state.phase === "sold" && player.sold_team_id ? teamById.get(player.sold_team_id) : null;
     return (
-      <div className="grid items-start gap-4 sm:grid-cols-[minmax(0,300px)_minmax(0,1fr)]">
+      <div className="@container">
+      <div className="grid grid-cols-1 items-start gap-4 @xl:grid-cols-[minmax(0,280px)_minmax(0,1fr)]">
         <PlayerDeckCard
           key={`${player.id}:${spinKey}`}
           player={player}
@@ -71,6 +72,7 @@ export function Stage() {
         ) : (
           <BidStatus />
         )}
+      </div>
       </div>
     );
   }

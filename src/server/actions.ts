@@ -90,7 +90,7 @@ const playerFields = z.object({
   name: z.string().trim().min(1).max(80),
   pool,
   role: z.enum(PLAYER_ROLES),
-  grade: z.enum(GRADES),
+  grade: z.enum(GRADES).default("C"),
   batting_style: optText(40),
   bowling_style: optText(40),
   base_price: money.nullish(),
@@ -363,7 +363,7 @@ export const actions = {
   // ---- Registrations ---------------------------------------------------------
   "registration.approve": action({
     roles: ["admin"],
-    input: z.object({ id: uuid, grade: z.enum(GRADES), basePrice: money.nullish() }),
+    input: z.object({ id: uuid, grade: z.enum(GRADES).default("C"), basePrice: money.nullish() }),
     run: async ({ me, db }, i) => {
       const reg = await mustOne<{ photo_path: string; status: string }>(
         db.from("registrations").select("photo_path, status").eq("id", i.id).maybeSingle(),
