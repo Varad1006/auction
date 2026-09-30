@@ -4,6 +4,7 @@ import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { parsePlayerImport } from "@/lib/import";
 import { photoUrlFrom } from "@/lib/photos";
+import { REG_BUCKET } from "./registration";
 import { basePriceFor } from "@/lib/rules";
 import { GRADES, PLAYER_ROLES, POOLS, type Me, type PoolConfig, type Role } from "@/lib/types";
 
@@ -355,6 +356,89 @@ export const actions = {
         db.from("pool_config").update({ ...cfg, increment_tiers: tiers }).eq("pool", p).select().single(),
       );
       await audit(db, me.email, "pool_config", { pool: p, ...cfg });
+      return row;
+    },
+  }),
+
+  // ---- Registrations ---------------------------------------------------------
+  "registration.approve": action({
+    roles: ["admin"],
+    input: z.object({ id: uuid, grade: z.enum(GRADES), basePrice: money.nullish() }),
+    run: async ({ me, db }, i) => {
+      const reg = await mustOne<{ photo_path: string; status: string }>(
+        db.from("registrations").select("photo_path, status").eq("id", i.id).maybeSingle(),
+      );
+      if (reg.status !== "pending") throw new ActionError(409, "not_pending", `Registration is already ${reg.status}`);
+      // Copy the private photo into the public player-photos bucket.
+      let photoUrl: string | null = null;
+      let copiedPath: string | null = null;
+      const file = await db.storage.from(REG_BUCKET).download(reg.photo_path);
+      if (file.data) {
+        const ext = reg.photo_path.split(".").pop() ?? "jpg";
+        copiedPath = `reg-${i.id}/${Date.now()}.${ext}`;
+        const up = await db.storage
+          .from(PHOTO_BUCKET)
+          .upload(copiedPath, await file.data.arrayBuffer(), { contentType: file.data.type || "image/jpeg", cacheControl: "31536000" });
+        if (!up.error) photoUrl = db.storage.from(PHOTO_BUCKET).getPublicUrl(copiedPath).data.publicUrl;
+      }
+      try {
+        return await rpc(db, "admin_approve_registration", {
+          p_actor: me.email,
+          p_id: i.id,
+          p_grade: i.grade,
+          p_base_price: i.basePrice ?? null,
+          p_photo_url: photoUrl,
+        });
+      } catch (e) {
+        if (copiedPath) await db.storage.from(PHOTO_BUCKET).remove([copiedPath]);
+        throw e;
+      }
+    },
+  }),
+  "registration.setStatus": action({
+    roles: ["admin"],
+    input: z.object({ id: uuid, status: z.enum(["pending", "rejected"]) }),
+    run: async ({ me, db }, i) => {
+      const row = await mustOne(
+        db
+          .from("registrations")
+          .update({ status: i.status, reviewed_by: me.email, reviewed_at: new Date().toISOString() })
+          .eq("id", i.id)
+          .neq("status", "approved")
+          .select("id")
+          .maybeSingle(),
+      );
+      await audit(db, me.email, "registration_status", { id: i.id, status: i.status });
+      return row;
+    },
+  }),
+  "registration.delete": action({
+    roles: ["admin"],
+    input: z.object({ id: uuid }),
+    run: async ({ me, db }, i) => {
+      const reg = await mustOne<{ photo_path: string; receipt_path: string | null }>(
+        db.from("registrations").delete().eq("id", i.id).select("photo_path, receipt_path").maybeSingle(),
+      );
+      await db.storage.from(REG_BUCKET).remove([reg.photo_path, ...(reg.receipt_path ? [reg.receipt_path] : [])]);
+      await audit(db, me.email, "registration_delete", { id: i.id });
+      return null;
+    },
+  }),
+  "registration.settings": action({
+    roles: ["admin"],
+    input: z.object({
+      is_open: z.boolean(),
+      title: z.string().trim().min(1).max(80),
+      intro: z.string().trim().max(2000),
+      payment_instructions: z.string().trim().max(1000),
+      receipt_required: z.boolean(),
+      availability_question: z.string().trim().min(1).max(150),
+      availability_options: z.array(z.string().trim().min(1).max(60)).max(20),
+      declaration_text: z.string().trim().min(1).max(2000),
+    }),
+    run: async ({ me, db }, i) => {
+      const row = await must(db.from("registration_settings").upsert({ id: 1, ...i }).select().single());
+      await audit(db, me.email, "registration_settings", { is_open: i.is_open });
       return row;
     },
   }),

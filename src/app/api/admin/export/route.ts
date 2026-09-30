@@ -10,8 +10,27 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const guard = await requireRole(["admin"]);
   if ("response" in guard) return guard.response;
-  const kind = req.nextUrl.searchParams.get("kind") === "results" ? "results" : "players";
+  const requested = req.nextUrl.searchParams.get("kind");
+  const kind = requested === "results" || requested === "registrations" ? requested : "players";
   const db = adminSupabase();
+  if (kind === "registrations") {
+    const { data, error } = await db.from("registrations").select("*").order("created_at");
+    if (error) return jsonError(500, "internal", "Export failed");
+    const csv = toCsv(
+      ["Submitted", "Status", "Name", "Email", "Phone", "Flat", "Age", "Gender", "Role", "Batting", "Bowling", "T-shirt", "Availability", "Additional info"],
+      data.map((r) => [
+        r.created_at, r.status, r.full_name, r.email, r.phone, r.flat_number, r.age, r.gender === "men" ? "Male" : "Female",
+        r.role, r.batting_style, r.bowling_style, r.tshirt_size, r.availability, r.additional_info,
+      ]),
+    );
+    return new NextResponse(csv, {
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="registrations-${new Date().toISOString().slice(0, 10)}.csv"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  }
   const [teamsRes, playersRes, resultsRes] = await Promise.all([
     db.from("teams").select("*"),
     db.from("players").select("*").order("pool").order("name"),

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { ApiError, callAction } from "@/lib/api";
 import { cn, money } from "@/lib/format";
 import type { ImportedPlayer } from "@/lib/import";
+import { resizeImage } from "@/lib/image";
 import { basePriceFor } from "@/lib/rules";
 import { GRADES, PLAYER_ROLES, POOL_LABEL, POOLS, type Grade, type Player, type PlayerRole, type Pool } from "@/lib/types";
 import { PlayerAvatar } from "../live/PlayerCard";
@@ -259,19 +260,6 @@ function PlayerForm({ player, onCreated, onClose }: { player: Player | null; onC
   );
 }
 
-async function resizeImage(file: File, max = 640): Promise<Blob> {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-  return new Promise((resolve, reject) =>
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Could not process image"))), "image/jpeg", 0.85),
-  );
-}
-
 function PhotoUpload({ player }: { player: Player }) {
   const toast = useToast();
   const { busy, run } = useRunner();
@@ -280,7 +268,7 @@ function PhotoUpload({ player }: { player: Player }) {
   async function upload(file: File) {
     setUploading(true);
     try {
-      const blob = await resizeImage(file);
+      const blob = await resizeImage(file, 640);
       const form = new FormData();
       form.set("playerId", player.id);
       form.set("file", new File([blob], "photo.jpg", { type: "image/jpeg" }));

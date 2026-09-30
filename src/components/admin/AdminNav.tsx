@@ -7,6 +7,7 @@ import { cn } from "@/lib/format";
 const TABS = [
   { href: "/admin", label: "Auction" },
   { href: "/admin/players", label: "Players" },
+  { href: "/admin/registrations", label: "Registrations" },
   { href: "/admin/settings", label: "Settings" },
   { href: "/admin/owners", label: "Owners" },
   { href: "/admin/results", label: "Results" },

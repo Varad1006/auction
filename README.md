@@ -169,6 +169,17 @@ enough for this event (see [Limits](#limits)).
 5. Do a rehearsal, then **Settings → Danger zone → Reset auction**. This keeps
    players, teams, settings and owners.
 
+### Player registration form
+
+Share `https://<your-site>/register` with residents. It asks for name, contact details, flat, age,
+gender, playing role, batting/bowling style, T-shirt size, availability, a photo and the payment
+receipt. Submissions are private (only admins see contact details, flats and receipts).
+
+On **Admin → Registrations**: open/close the form, set the intro, payment instructions,
+availability options (e.g. match dates) and declaration; review each registration (photo and
+receipt links), pick a grade and **Approve** to add them to the auction pool with their photo,
+availability and notes on the player card. **CSV** exports everything (useful for T-shirt orders).
+
 ## Running the event
 
 - **Admin (laptop):** Admin → Auction. Spin → Open bidding → owners bid (or
