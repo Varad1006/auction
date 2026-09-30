@@ -112,21 +112,24 @@ export function Wheel({
           ) : (
             paths.map((p) => <path key={p.id} d={p.d} fill={p.fill} stroke="#0f172a" strokeWidth="1" />)
           )}
-          {paths.map((p) => (
-            <g key={`t-${p.id}`} transform={`rotate(${p.mid - 90} ${C} ${C})`}>
-              <text
-                x={C + R - 12}
-                y={C}
-                textAnchor="end"
-                dominantBaseline="central"
-                fontSize={fontSize}
-                fontWeight={600}
-                fill="#fff"
-              >
-                {p.name.length > maxChars ? `${p.name.slice(0, maxChars - 1)}…` : p.name}
-              </text>
-            </g>
-          ))}
+          {paths.map((p) => {
+            // Labels read outward from the hub, like a physical prize wheel.
+            return (
+              <g key={`t-${p.id}`} transform={`rotate(${p.mid - 90} ${C} ${C})`}>
+                <text
+                  x={C + R - 12}
+                  y={C}
+                  textAnchor="end"
+                  dominantBaseline="central"
+                  fontSize={fontSize}
+                  fontWeight={600}
+                  fill="#fff"
+                >
+                  {p.name.length > maxChars ? `${p.name.slice(0, maxChars - 1)}…` : p.name}
+                </text>
+              </g>
+            );
+          })}
           <circle cx={C} cy={C} r={26} fill="#0f172a" stroke="#fbbf24" strokeWidth="4" />
           <text x={C} y={C} textAnchor="middle" dominantBaseline="central" fontSize="20">🏏</text>
         </svg>

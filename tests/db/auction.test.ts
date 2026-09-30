@@ -56,6 +56,13 @@ describe.skipIf(!ADMIN_URL)("auction database", () => {
       stdio: "pipe",
     });
     pool = new pg.Pool({ connectionString: ADMIN_URL!.replace(/\/[^/]*$/, `/${DB_NAME}`), max: 20 });
+    // Hosted Supabase loads pg-safeupdate for API requests (UPDATE/DELETE
+    // need a WHERE clause). Emulate it when the extension can be loaded, e.g.
+    // TEST_DATABASE_URL=postgres://supabase_admin:postgres@127.0.0.1:54322/postgres
+    // (the database from `supabase start`).
+    pool.on("connect", (c) => {
+      c.query("load 'safeupdate'").catch(() => {});
+    });
   });
 
   afterAll(async () => {
@@ -64,10 +71,10 @@ describe.skipIf(!ADMIN_URL)("auction database", () => {
 
   beforeEach(async () => {
     await q("select auction_reset('test')");
-    await q("delete from players");
+    await q("delete from players where true");
     await q("update pool_config set purse = 1000, min_squad = 8, max_squad = 12, base_price_a = 50, base_price_b = 30, base_price_c = 20, increment_tiers = '[{\"from\":0,\"step\":5}]' where pool = 'men'");
-    await q("update team_pool_limits set purse = null, min_squad = null, max_squad = null");
-    await q("update auction_state set current_pool = 'men'");
+    await q("update team_pool_limits set purse = null, min_squad = null, max_squad = null where true");
+    await q("update auction_state set current_pool = 'men' where id = 1");
     teams = await q("select id, name from teams order by sort_order");
   });
 
@@ -99,10 +106,10 @@ describe.skipIf(!ADMIN_URL)("auction database", () => {
         "insert into players (name, pool, role, grade, base_price) values ('x', 'men', 'Batter', 'C', 1)",
         `update players set sold_price = 1 where id = '${playerId}'`,
         `delete from players where id = '${playerId}'`,
-        "update auction_state set current_bid = 999",
+        "update auction_state set current_bid = 999 where id = 1",
         "insert into bids (player_id, pool, round, team_id, amount, placed_by_role) select id, 'men', 1, (select id from teams limit 1), 5, 'admin' from players limit 1",
-        "update pool_config set purse = 1",
-        "update teams set name = 'hacked'",
+        "update pool_config set purse = 1 where pool = 'men'",
+        "update teams set name = 'hacked' where true",
         "select * from owners",
         "insert into owners (email, team_id) select 'x@y.z', id from teams limit 1",
         "select * from user_sessions",
@@ -110,6 +117,8 @@ describe.skipIf(!ADMIN_URL)("auction database", () => {
         "select auction_sell('x', gen_random_uuid())",
         "select auction_place_bid('x', 'admin', null, gen_random_uuid(), gen_random_uuid(), 1)",
         "select auction_reset('x')",
+        "select admin_delete_player('x', gen_random_uuid())",
+        "select admin_delete_team('x', gen_random_uuid())",
       ];
       for (const sql of denied) {
         const err = await errorOf(asRole(role, (c) => c.query(sql)));
@@ -300,6 +309,44 @@ describe.skipIf(!ADMIN_URL)("auction database", () => {
     it("will not advance while players remain in the pool", async () => {
       await addPlayer("Still Here");
       expect((await errorOf(q("select auction_advance_round('a', 'men')"))).hint).toBe("pool_not_empty");
+    });
+  });
+
+  describe("admin edits", () => {
+    it("protects sold and on-block players from deletion", async () => {
+      const sold = await addPlayer("Sold Delete");
+      const onBlock = await addPlayer("Block Delete");
+      const free = await addPlayer("Free Delete");
+      await putOnBlock(sold);
+      await bid(teams[0].id, sold, 20);
+      await q("select auction_sell('a', $1)", [sold]);
+      expect((await errorOf(q("select admin_delete_player('a', $1)", [sold]))).hint).toBe("player_sold");
+      await putOnBlock(onBlock);
+      expect((await errorOf(q("select admin_delete_player('a', $1)", [onBlock]))).hint).toBe("on_block");
+      await q("select admin_delete_player('a', $1)", [free]);
+      expect(await q("select id from players where id = $1", [free])).toHaveLength(0);
+    });
+
+    it("refuses to delete a team that bought players", async () => {
+      const p1 = await addPlayer("Team Delete");
+      await putOnBlock(p1);
+      await bid(teams[5].id, p1, 20);
+      await q("select auction_sell('a', $1)", [p1]);
+      expect((await errorOf(q("select admin_delete_team('a', $1)", [teams[5].id]))).hint).toBe("team_has_players");
+      await q("select auction_undo_result('a')");
+      expect((await errorOf(q("select admin_delete_team('a', $1)", [teams[5].id]))).hint).toBe("team_bidding");
+    });
+
+    it("applies grade base prices to undecided players only", async () => {
+      const sold = await addPlayer("Keep Price", "men", 99);
+      const waiting = await addPlayer("New Price", "men", 99);
+      await putOnBlock(sold);
+      await bid(teams[0].id, sold, 99);
+      await q("select auction_sell('a', $1)", [sold]);
+      const n = (await q<{ n: number }>("select admin_apply_base_prices('a', 'men') as n"))[0].n;
+      expect(n).toBe(1);
+      expect((await q("select base_price from players where id = $1", [waiting]))[0].base_price).toBe(20);
+      expect((await q("select base_price from players where id = $1", [sold]))[0].base_price).toBe(99);
     });
   });
 

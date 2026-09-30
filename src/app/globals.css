@@ -60,16 +60,15 @@ textarea {
 @keyframes stamp {
   0% {
     opacity: 0;
-    transform: scale(2.2) rotate(-12deg);
+    transform: scale(1.25);
   }
   100% {
     opacity: 1;
-    transform: scale(1) rotate(-6deg);
+    transform: none;
   }
 }
 .stamp {
   animation: stamp 350ms cubic-bezier(0.3, 1.4, 0.6, 1) both;
-  transform: rotate(-6deg);
 }
 
 @keyframes bump {

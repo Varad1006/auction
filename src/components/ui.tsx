@@ -56,8 +56,9 @@ export function Card({ className, children, title, actions }: { className?: stri
   );
 }
 
-export const inputClass =
-  "w-full rounded-lg bg-slate-950 px-3 py-2 text-slate-100 ring-1 ring-white/15 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-400";
+export const inputBase =
+  "rounded-lg bg-slate-950 px-3 py-2 text-slate-100 ring-1 ring-white/15 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-400";
+export const inputClass = `${inputBase} w-full`;
 
 export function Field({ label, hint, children, className }: { label: string; hint?: string; children: React.ReactNode; className?: string }) {
   return (

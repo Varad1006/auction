@@ -12,7 +12,9 @@
     "test": "vitest run",
     "db:local": "bash scripts/db-local.sh",
     "icons": "node scripts/make-icons.mjs",
-    "test:db": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://postgres:postgres@localhost:5432/postgres} vitest run tests/db"
+    "test:db": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://postgres:postgres@localhost:5432/postgres} vitest run tests/db",
+    "db:migrate": "node scripts/apply-migrations.mjs",
+    "test:e2e": "node tests/e2e/smoke.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -32,6 +34,7 @@
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.7",
     "pg": "^8.23.0",
+    "playwright": "^1.63.0",
     "postcss": "^8.5.28",
     "sharp": "^0.35.5",
     "tailwindcss": "^4.3.3",

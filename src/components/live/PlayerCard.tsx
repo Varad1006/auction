@@ -43,13 +43,13 @@ export function PlayerCard({
             {player.batting_style && (
               <div>
                 <dt className="sr-only">Batting</dt>
-                <dd>🏏 {player.batting_style}</dd>
+                <dd><span className="text-slate-500">Bat</span> {player.batting_style}</dd>
               </div>
             )}
             {player.bowling_style && (
               <div>
                 <dt className="sr-only">Bowling</dt>
-                <dd>⚾ {player.bowling_style}</dd>
+                <dd><span className="text-slate-500">Bowl</span> {player.bowling_style}</dd>
               </div>
             )}
           </dl>
@@ -61,15 +61,17 @@ export function PlayerCard({
       {player.notes && <p className="border-t border-white/5 px-4 py-3 text-sm text-slate-300 sm:px-5">{player.notes}</p>}
       {soldTo && (
         <div
-          className="stamp absolute right-3 top-3 rounded-lg px-3 py-1.5 text-right font-black uppercase shadow-lg"
+          className="stamp flex items-center justify-between gap-3 px-4 py-3 font-black uppercase sm:px-5"
           style={{ background: soldTo.team.color, color: textOn(soldTo.team.color) }}
         >
-          <div className="text-xs tracking-widest">Sold</div>
-          <div className="text-sm">{soldTo.team.short_name} · {money(soldTo.price)}</div>
+          <span className="tracking-[0.2em]">Sold</span>
+          <span className="truncate text-right">
+            {soldTo.team.name} · {money(soldTo.price)}
+          </span>
         </div>
       )}
       {unsold && (
-        <div className="stamp absolute right-3 top-3 rounded-lg bg-slate-200 px-3 py-1.5 text-sm font-black uppercase tracking-widest text-slate-900 shadow-lg">
+        <div className="stamp bg-slate-200 px-4 py-3 text-center font-black uppercase tracking-[0.3em] text-slate-900 sm:px-5">
           Unsold
         </div>
       )}

@@ -30,7 +30,7 @@ export function TeamsBoard({ highlightTeamId }: { highlightTeamId?: string | nul
           ))}
         </div>
       </div>
-      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {teams.map((t) => {
           const s = sums.get(t.id);
           const roster = players
@@ -59,20 +59,19 @@ export function TeamsBoard({ highlightTeamId }: { highlightTeamId?: string | nul
                     {leading && <span className="rounded bg-emerald-500 px-1.5 text-[10px] font-bold uppercase text-emerald-950">Leading</span>}
                   </span>
                   {s && (
-                    <span className="mt-1 grid grid-cols-3 gap-2 text-xs text-slate-400">
-                      <span>
-                        <span className="block text-base font-bold tabular-nums text-slate-100">{money(s.remaining)}</span>
-                        left
+                    <span className="mt-1.5 flex flex-wrap items-end justify-between gap-x-3 gap-y-1">
+                      <span className="whitespace-nowrap">
+                        <span className="block text-xl font-extrabold leading-tight tabular-nums">{money(s.remaining)}</span>
+                        <span className="text-xs text-slate-400">purse left</span>
                       </span>
-                      <span>
-                        <span className="block text-base font-bold tabular-nums text-slate-100">
-                          {s.squadCount}/{s.maxSquad}
+                      <span className="whitespace-nowrap text-right text-xs leading-5 text-slate-400">
+                        <span className="block">
+                          Squad <b className="tabular-nums text-slate-100">{s.squadCount}/{s.maxSquad}</b>
+                          <span className="text-slate-500"> (min {s.minSquad})</span>
                         </span>
-                        squad (min {s.minSquad})
-                      </span>
-                      <span>
-                        <span className="block text-base font-bold tabular-nums text-slate-100">{money(s.maxBid)}</span>
-                        max bid
+                        <span className="block">
+                          Max bid <b className="tabular-nums text-slate-100">{money(s.maxBid)}</b>
+                        </span>
                       </span>
                     </span>
                   )}

@@ -50,8 +50,8 @@ export function PlayersManager() {
           </div>
         }
       >
-        <div className="flex flex-wrap gap-2">
-          <select className={cn(inputClass, "w-auto")} value={pool} onChange={(e) => setPool(e.target.value as Pool | "all")} aria-label="Pool">
+        <div className="grid gap-2 sm:grid-cols-[10rem_10rem_1fr]">
+          <select className={inputClass} value={pool} onChange={(e) => setPool(e.target.value as Pool | "all")} aria-label="Pool">
             <option value="all">All pools</option>
             {POOLS.map((p) => (
               <option key={p} value={p}>
@@ -59,13 +59,13 @@ export function PlayersManager() {
               </option>
             ))}
           </select>
-          <select className={cn(inputClass, "w-auto")} value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)} aria-label="Status">
+          <select className={inputClass} value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)} aria-label="Status">
             <option value="all">Any status</option>
             <option value="pool">In pool</option>
             <option value="sold">Sold</option>
             <option value="unsold">Unsold</option>
           </select>
-          <input className={cn(inputClass, "min-w-40 flex-1")} placeholder="Search name…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className={inputClass} placeholder="Search name…" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
       </Card>
 

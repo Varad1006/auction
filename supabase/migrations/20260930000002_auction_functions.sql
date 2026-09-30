@@ -594,12 +594,14 @@ begin
      set phase = 'idle', current_player_id = null, current_bid = null, leading_team_id = null,
          bid_count = 0, spin_candidates = null, spin_started_at = null, last_result_id = null
    where id = 1;
-  delete from public.bids;
-  delete from public.results;
+  -- Supabase's safeupdate extension rejects UPDATE/DELETE without WHERE on
+  -- API requests, hence the explicit "where true".
+  delete from public.bids where true;
+  delete from public.results where true;
   update public.players
      set status = 'pool', sold_team_id = null, sold_price = null, decided_round = null
    where status <> 'pool' or decided_round is not null;
-  update public.pool_config set current_round = 1;
+  update public.pool_config set current_round = 1 where true;
   select * into s from public.auction_state where id = 1;
   perform public.audit(p_actor, 'reset', '{}'::jsonb);
   return s;

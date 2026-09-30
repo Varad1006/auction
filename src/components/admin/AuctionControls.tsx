@@ -6,7 +6,7 @@ import { cn, money } from "@/lib/format";
 import { checkBid, minNextBid } from "@/lib/rules";
 import { POOL_LABEL, POOLS } from "@/lib/types";
 import { useAuction } from "../live/useAuction";
-import { Button, Card, inputClass, useRunner } from "../ui";
+import { Button, Card, inputBase, inputClass, useRunner } from "../ui";
 
 export function AuctionControls() {
   const a = useAuction();
@@ -133,7 +133,7 @@ export function AuctionControls() {
       {phase === "bidding" && player && playerConfig && sums && (
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
-            Bid for a team · next {money(minNextBid(state, player, playerConfig))}
+            Bid for a team at {money(minNextBid(state, player, playerConfig))}
           </p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {teams.map((t) => {
@@ -153,7 +153,7 @@ export function AuctionControls() {
                     <span className="truncate font-semibold">{t.name}</span>
                   </span>
                   <span className="shrink-0 text-xs text-slate-400">
-                    {busy === `bid-${t.id}` ? "…" : check && !check.ok && check.code !== "already_leading" ? check.message.split(" (")[0] : `+${money(amount)}`}
+                    {busy === `bid-${t.id}` ? "…" : check?.ok ? money(amount) : check?.code === "already_leading" ? "Leading" : check?.message.split(" (")[0]}
                   </span>
                 </button>
               );
@@ -177,7 +177,7 @@ export function AuctionControls() {
               ))}
             </select>
             <input
-              className={cn(inputClass, "w-28")}
+              className={cn(inputBase, "w-28 shrink-0")}
               inputMode="numeric"
               placeholder="Amount"
               value={customAmount}

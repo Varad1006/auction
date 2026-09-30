@@ -6,7 +6,7 @@ import { cn, timeAgo } from "@/lib/format";
 import type { OwnerMapping, UserSession } from "@/lib/types";
 import { TeamBadge } from "../live/TeamBadge";
 import { useAuction } from "../live/useAuction";
-import { Button, Card, Field, inputClass, useRunner } from "../ui";
+import { Button, Card, Field, inputBase, inputClass, useRunner } from "../ui";
 
 const ONLINE_MS = 90_000;
 
@@ -112,7 +112,7 @@ export function OwnersManager() {
                     {o.label && <span className="text-xs text-slate-500">{o.label}</span>}
                   </span>
                   <select
-                    className={cn(inputClass, "w-40 py-1.5 text-sm")}
+                    className={cn(inputBase, "w-40 py-1.5 text-sm")}
                     value={o.team_id}
                     aria-label={`Team for ${o.email}`}
                     onChange={(e) =>
