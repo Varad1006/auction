@@ -46,21 +46,23 @@ export function Wheel({
   onDone,
 }: {
   segments: Segment[];
-  targetId: string;
-  startedAt: string;
-  durationMs: number;
-  onDone: () => void;
+  /** Omit the spin props to show a slowly idling wheel (nothing picked yet). */
+  targetId?: string;
+  startedAt?: string;
+  durationMs?: number;
+  onDone?: () => void;
 }) {
+  const idle = !targetId || !startedAt;
   const discRef = useRef<HTMLDivElement>(null);
-  const doneRef = useRef(onDone);
+  const doneRef = useRef(onDone ?? (() => {}));
   useEffect(() => {
-    doneRef.current = onDone;
+    doneRef.current = onDone ?? (() => {});
   }, [onDone]);
 
   const n = Math.max(segments.length, 1);
   const seg = 360 / n;
   const index = Math.max(0, segments.findIndex((s) => s.id === targetId));
-  const finalRot = targetRotation(n, index, `${targetId}:${startedAt}`);
+  const finalRot = idle ? 0 : targetRotation(n, index, `${targetId}:${startedAt}`);
   const fontSize = n <= 8 ? 16 : n <= 16 ? 13 : n <= 30 ? 10 : n <= 50 ? 8 : 6;
   const maxChars = n <= 16 ? 18 : 14;
 
@@ -78,7 +80,7 @@ export function Wheel({
 
   useEffect(() => {
     const disc = discRef.current;
-    if (!disc) return;
+    if (!disc || idle || !startedAt || durationMs === undefined) return;
     const elapsed = Date.now() - Date.parse(startedAt);
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     // Joined long after the spin (or clocks disagree a lot): show the result.
@@ -95,7 +97,7 @@ export function Wheel({
     });
     anim.onfinish = () => window.setTimeout(() => doneRef.current(), 500);
     return () => anim.cancel();
-  }, [finalRot, startedAt, durationMs]);
+  }, [finalRot, startedAt, durationMs, idle]);
 
   return (
     <div className="relative mx-auto aspect-square w-full max-w-[min(88vw,440px)]">
@@ -104,7 +106,7 @@ export function Wheel({
           <path d="M17 40 L2 6 Q17 -4 32 6 Z" fill="#fbbf24" stroke="#0f172a" strokeWidth="3" />
         </svg>
       </div>
-      <div ref={discRef} className="h-full w-full will-change-transform">
+      <div ref={discRef} className={idle ? "wheel-idle h-full w-full" : "h-full w-full will-change-transform"}>
         <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="h-full w-full drop-shadow-2xl" role="img" aria-label="Player wheel">
           <circle cx={C} cy={C} r={R + 4} fill="#0f172a" stroke="#fbbf24" strokeWidth="4" />
           {n === 1 ? (

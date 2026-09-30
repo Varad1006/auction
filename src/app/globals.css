@@ -104,7 +104,19 @@ textarea {
   animation: toast-in 200ms ease-out;
 }
 
+@keyframes wheel-idle {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.wheel-idle {
+  animation: wheel-idle 90s linear infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .wheel-idle {
+    animation: none;
+  }
   .reveal,
   .stamp,
   .bump,

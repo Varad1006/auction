@@ -197,10 +197,12 @@ check(true, "undo result puts the player back on the block with owner 1 leading"
 await adminPage.getByRole("button", { name: /^SOLD to/ }).click();
 await viewerPage.getByText("Sold", { exact: true }).first().waitFor({ timeout: 5000 });
 
-// Owner reconnects after a "phone sleep": state is still correct.
+// A fresh visit after a sale shows the wheel for the next player, while
+// screens that watched the sale keep the SOLD card.
+check((await viewerPage.getByRole("heading", { name: playerName }).count()) > 0, "viewer who watched still sees the sold player");
 await ownerPage.reload();
-await ownerPage.getByRole("heading", { name: playerName }).waitFor({ timeout: 10000 });
-check(true, "owner reload shows the current state");
+await ownerPage.getByText("Waiting for the next spin").waitFor({ timeout: 10000 });
+check((await ownerPage.getByRole("img", { name: "Player wheel" }).count()) === 1, "a fresh visit after a sale shows the wheel, not the last sold player");
 await ownerPage.screenshot({ path: `${SHOTS}/08-owner-after-sale.png`, fullPage: true });
 
 for (const [path, marker] of [

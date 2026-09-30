@@ -9,8 +9,15 @@ import { Wheel } from "./Wheel";
 
 /** The "block": wheel while spinning, then the player card and bid status. */
 export function Stage() {
-  const { ready, state, player, playerById, teamById, pool, config, counts, lastResult, error } = useAuction();
+  const { ready, state, player, players, playerById, teamById, pool, config, counts, lastResult, error } = useAuction();
   const [revealedSpin, setRevealedSpin] = useState<string | null>(null);
+  // Result already on screen when this page was opened. A fresh visit shows the
+  // wheel for the next player rather than the last one sold; people who were
+  // watching still see the SOLD/UNSOLD card until the next spin.
+  const [resultAtLoad, setResultAtLoad] = useState<number | null | undefined>(undefined);
+  if (ready && state && resultAtLoad === undefined) {
+    setResultAtLoad(state.phase === "sold" || state.phase === "unsold" ? state.last_result_id : null);
+  }
 
   if (!ready) {
     return (
@@ -45,7 +52,8 @@ export function Stage() {
   }
 
   const onBlock = ["spinning", "revealed", "bidding"].includes(state.phase);
-  if (player && (onBlock || state.phase === "sold" || state.phase === "unsold")) {
+  const freshResult = (state.phase === "sold" || state.phase === "unsold") && state.last_result_id !== resultAtLoad;
+  if (player && (onBlock || freshResult)) {
     const soldTeam = state.phase === "sold" && player.sold_team_id ? teamById.get(player.sold_team_id) : null;
     return (
       <div className="grid items-start gap-4 sm:grid-cols-[minmax(0,300px)_minmax(0,1fr)]">
@@ -68,15 +76,23 @@ export function Stage() {
   }
 
   const last = lastResult ? playerById.get(lastResult.player_id) : null;
+  const remaining = players
+    .filter((p) => p.pool === pool && p.status === "pool")
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((p) => ({ id: p.id, name: p.name }));
   return (
-    <div className="rounded-2xl bg-slate-900 p-6 text-center ring-1 ring-white/10">
-      <p className="text-4xl">🏏</p>
-      <p className="mt-2 text-xl font-bold">Waiting for the next spin</p>
-      <p className="mt-1 text-sm text-slate-400">
+    <div className="rounded-2xl bg-slate-900/60 p-4 ring-1 ring-white/10">
+      <p className="text-center text-sm font-semibold uppercase tracking-widest text-amber-300">Waiting for the next spin</p>
+      <p className="mb-3 mt-1 text-center text-sm text-slate-400">
         {POOL_LABEL[pool]} · Round {config?.current_round ?? 1} · {counts.pool} in pool · {counts.sold} sold · {counts.unsold} unsold
       </p>
+      {remaining.length > 0 ? (
+        <Wheel segments={remaining} />
+      ) : (
+        <p className="py-10 text-center text-slate-400">No {POOL_LABEL[pool].toLowerCase()} players left in this round.</p>
+      )}
       {last && lastResult && (
-        <p className="mt-3 text-sm text-slate-400">
+        <p className="mt-3 text-center text-sm text-slate-400">
           Last: <span className="font-semibold text-slate-200">{last.name}</span>{" "}
           {lastResult.outcome === "sold" ? `→ ${teamById.get(lastResult.team_id ?? "")?.name ?? ""}` : "unsold"}
         </p>
