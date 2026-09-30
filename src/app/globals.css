@@ -1,0 +1,116 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  background: #020617;
+  color: #f1f5f9;
+}
+
+body {
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+button:not(:disabled),
+summary {
+  cursor: pointer;
+}
+
+button,
+a,
+summary {
+  touch-action: manipulation;
+}
+
+:focus-visible {
+  outline: 2px solid #fbbf24;
+  outline-offset: 2px;
+}
+
+input,
+select,
+textarea {
+  font-size: 16px; /* prevents iOS zoom on focus */
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.reveal {
+  animation: reveal 450ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+@keyframes stamp {
+  0% {
+    opacity: 0;
+    transform: scale(2.2) rotate(-12deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(-6deg);
+  }
+}
+.stamp {
+  animation: stamp 350ms cubic-bezier(0.3, 1.4, 0.6, 1) both;
+  transform: rotate(-6deg);
+}
+
+@keyframes bump {
+  0% {
+    transform: scale(1.12);
+    color: #fbbf24;
+  }
+  100% {
+    transform: none;
+  }
+}
+.bump {
+  animation: bump 500ms ease-out;
+  transform-origin: left center;
+}
+
+@keyframes glow {
+  50% {
+    box-shadow: 0 0 0 2px #34d399, 0 0 18px -2px #34d39988;
+  }
+}
+.leading-glow {
+  animation: glow 1.6s ease-in-out infinite;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+.toast-in {
+  animation: toast-in 200ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .stamp,
+  .bump,
+  .leading-glow,
+  .toast-in {
+    animation: none;
+  }
+}
