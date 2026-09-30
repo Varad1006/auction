@@ -171,13 +171,14 @@ export function DisplayPage() {
           </button>
         </div>
       </header>
-      <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_minmax(0,27vw)] gap-[2.5vw] px-[2.5vw] py-[3vh]">
+      <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_minmax(0,35vw)] gap-[2.5vw] px-[2.5vw] py-[3vh]">
         <main className="min-h-0">{main}</main>
         <aside className="flex min-h-0 flex-col gap-[2.5vh]">
           <section className="overflow-hidden rounded-[1vw] bg-slate-900/80 ring-1 ring-white/10">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-[1vw] border-b border-white/10 px-[1vw] py-[0.8vh] text-[0.85vw] font-bold uppercase tracking-wider text-slate-500">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-x-[1vw] border-b border-white/10 px-[1vw] py-[0.8vh] text-[0.8vw] font-bold uppercase tracking-wider text-slate-500">
               <span>{POOL_LABEL[player?.pool ?? pool]} · Team</span>
               <span className="text-right">Purse left</span>
+              <span className="text-right">Max bid</span>
               <span className="text-right">Squad</span>
             </div>
             <ul className="divide-y divide-white/5">
@@ -185,12 +186,13 @@ export function DisplayPage() {
                 const s = sums.get(t.id);
                 const leading = state.phase === "bidding" && state.leading_team_id === t.id;
                 return (
-                  <li key={t.id} className={cn("grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-[1vw] px-[1vw] py-[1vh] text-[1.15vw]", leading && "bg-emerald-500/15")}>
+                  <li key={t.id} className={cn("grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-x-[1vw] px-[1vw] py-[1vh] text-[1.05vw]", leading && "bg-emerald-500/15")}>
                     <span className="flex min-w-0 items-center gap-[0.6vw]">
                       <span className="h-[1vw] w-[1vw] shrink-0 rounded-full" style={{ background: t.color }} />
-                      <span className="truncate font-bold">{t.name}</span>
+                      <span className="truncate font-bold" title={t.name}>{t.name}</span>
                     </span>
                     <span className="text-right font-black tabular-nums">{(s?.remaining ?? 0).toLocaleString("en-IN")}</span>
+                    <span className="text-right font-bold tabular-nums text-amber-300">{(s?.maxBid ?? 0).toLocaleString("en-IN")}</span>
                     <span className="text-right tabular-nums text-slate-300">
                       {s?.squadCount ?? 0}/{s?.maxSquad ?? 0}
                     </span>
