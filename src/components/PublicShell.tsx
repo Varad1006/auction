@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/format";
 import { Header } from "./Header";
+import { InstallHint } from "./InstallHint";
 import { useLive } from "./live/LiveProvider";
 import { OwnerBidBar } from "./live/OwnerBidBar";
 import { useMe } from "./MeProvider";
@@ -49,6 +50,7 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
         </div>
       </nav>
       <SetupNotice />
+      <InstallHint />
       <main className={cn("mx-auto max-w-6xl px-4 py-4 lg:py-6", ownerTeam ? "pb-44" : "pb-12")}>{children}</main>
       {ownerTeam && <OwnerBidBar teamId={ownerTeam} />}
     </>
