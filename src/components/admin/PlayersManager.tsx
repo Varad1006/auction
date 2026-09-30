@@ -160,6 +160,8 @@ function PlayerForm({ player, onCreated, onClose }: { player: Player | null; onC
     bowling_style: player?.bowling_style ?? "",
     base_price: player ? String(player.base_price) : "",
     notes: player?.notes ?? "",
+    details: (player?.details ?? []).map((d) => `${d.label}: ${d.value}`).join("\n"),
+    photo_link: "",
   });
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((s) => ({ ...s, [k]: v }));
   const cfg = configs[f.pool];
@@ -176,6 +178,16 @@ function PlayerForm({ player, onCreated, onClose }: { player: Player | null; onC
       bowling_style: f.bowling_style || null,
       base_price: f.base_price === "" ? null : Number(f.base_price),
       notes: f.notes || null,
+      details: f.details
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .map((l) => {
+          const i = l.indexOf(":");
+          return i > 0 ? { label: l.slice(0, i).trim(), value: l.slice(i + 1).trim() } : { label: "Info", value: l };
+        })
+        .filter((d) => d.label && d.value),
+      photo_link: f.photo_link || null,
     };
     if (player) {
       await run("save", () => callAction("player.update", { id: player.id, ...payload }), "Saved").then((r) => r && onClose());
@@ -226,6 +238,12 @@ function PlayerForm({ player, onCreated, onClose }: { player: Player | null; onC
         </Field>
         <Field label="Stats / notes" className="sm:col-span-2">
           <textarea className={inputClass} rows={3} maxLength={500} value={f.notes} onChange={(e) => set("notes", e.target.value)} />
+        </Field>
+        <Field label="Card details" className="sm:col-span-2" hint="One per line as Label: value, e.g. Year: TE. Shown publicly on the card's back.">
+          <textarea className={inputClass} rows={4} value={f.details} onChange={(e) => set("details", e.target.value)} placeholder={"Year: TE\nBranch: Civil\nPrevious team: Titans"} />
+        </Field>
+        <Field label="Photo link" className="sm:col-span-2" hint="Optional: paste a Google Drive or image link instead of uploading.">
+          <input className={inputClass} type="url" placeholder="https://drive.google.com/…" value={f.photo_link} onChange={(e) => set("photo_link", e.target.value)} />
         </Field>
       </div>
       <div className="flex justify-end gap-2">
@@ -350,6 +368,7 @@ interface ImportResponse {
   imported: number;
   preview: (ImportedPlayer & { base_price: number })[];
   errors: { line: number; message: string }[];
+  columns?: { header: string; use: string }[];
 }
 
 function ImportForm({ onDone }: { onDone: () => void }) {
@@ -371,9 +390,10 @@ function ImportForm({ onDone }: { onDone: () => void }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-slate-400">
-        Paste rows from a spreadsheet (tab-separated), CSV, or <code>|</code>-separated text. With no header row the columns
-        are: <b>name, role, grade, batting, bowling, base price, notes</b>. A header row can reorder columns or add a{" "}
-        <b>pool</b> column. Empty base price uses the grade default.
+        In Google Sheets select all cells <b>including the header row</b>, copy, and paste here. Columns are matched by
+        name (name, gender, role, batting, bowling, grade, base price, photo…). Private columns like email, phone and
+        roll number are skipped; every other column becomes a detail on the player card. Missing grade defaults to C and
+        empty base price uses the grade default. Drive photo links must be shared as &ldquo;Anyone with the link&rdquo;.
       </p>
       <Field label="Default pool">
         <select className={inputClass} value={pool} onChange={(e) => { setPool(e.target.value as Pool); setPreview(null); }}>
@@ -404,6 +424,19 @@ function ImportForm({ onDone }: { onDone: () => void }) {
                 </li>
               ))}
             </ul>
+          )}
+          {preview.columns && preview.columns.length > 0 && (
+            <div className="rounded-lg bg-slate-950 p-2 text-xs ring-1 ring-white/10">
+              <p className="mb-1 font-semibold text-slate-300">Columns</p>
+              <ul className="grid gap-x-4 sm:grid-cols-2">
+                {preview.columns.map((c, i) => (
+                  <li key={i} className="truncate">
+                    <span className="text-slate-400">{c.header}</span> →{" "}
+                    <span className={c.use.startsWith("ignored") ? "text-slate-500" : "text-amber-300"}>{c.use}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           <p className="text-slate-300">
             {preview.preview.length} player(s) ready{preview.errors.length ? " (fix the errors above to import)" : ""}:

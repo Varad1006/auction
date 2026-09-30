@@ -3,6 +3,7 @@ import "server-only";
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { parsePlayerImport } from "@/lib/import";
+import { photoUrlFrom } from "@/lib/photos";
 import { basePriceFor } from "@/lib/rules";
 import { GRADES, PLAYER_ROLES, POOLS, type Me, type PoolConfig, type Role } from "@/lib/types";
 
@@ -93,6 +94,12 @@ const playerFields = z.object({
   bowling_style: optText(40),
   base_price: money.nullish(),
   notes: optText(500),
+  details: z
+    .array(z.object({ label: z.string().trim().min(1).max(60), value: z.string().trim().min(1).max(300) }))
+    .max(20)
+    .optional(),
+  // A pasted image or Google Drive link (uploads use /api/admin/photo).
+  photo_link: z.string().trim().max(500).nullish(),
 });
 
 async function poolConfig(db: SupabaseClient, p: string): Promise<PoolConfig> {
@@ -193,7 +200,12 @@ export const actions = {
     input: playerFields,
     run: async ({ me, db }, i) => {
       const cfg = await poolConfig(db, i.pool);
-      const row = { ...i, base_price: i.base_price ?? basePriceFor(cfg, i.grade) };
+      const { photo_link, ...fields } = i;
+      const row = {
+        ...fields,
+        base_price: i.base_price ?? basePriceFor(cfg, i.grade),
+        ...(photo_link ? { photo_url: photoUrlFrom(photo_link) } : {}),
+      };
       const player = await must(db.from("players").insert(row).select().single());
       await audit(db, me.email, "create_player", { player_id: player.id, name: i.name });
       return player;
@@ -208,8 +220,14 @@ export const actions = {
       if (fields.pool && fields.pool !== current.pool && current.status === "sold") {
         throw new ActionError(409, "player_sold", "Can't move a sold player to another pool");
       }
-      const patch = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined));
+      const { photo_link, ...rest } = fields;
+      const patch: Record<string, unknown> = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
       if (patch.base_price === null) delete patch.base_price;
+      if (photo_link) {
+        const url = photoUrlFrom(photo_link);
+        if (!url) throw new ActionError(400, "bad_photo", "Photo link must be an https image or Google Drive link");
+        patch.photo_url = url;
+      }
       const player = await must(db.from("players").update(patch).eq("id", id).select().single());
       await audit(db, me.email, "update_player", { player_id: id, fields: Object.keys(patch) });
       return player;
@@ -244,11 +262,11 @@ export const actions = {
         base_price: p.base_price ?? basePriceFor(configs.get(p.pool)!, p.grade),
       }));
       if (i.dryRun || parsed.errors.length > 0 || rows.length === 0) {
-        return { imported: 0, preview: rows, errors: parsed.errors };
+        return { imported: 0, preview: rows, errors: parsed.errors, columns: parsed.columns };
       }
       await must(db.from("players").insert(rows).select("id"));
       await audit(db, me.email, "import_players", { count: rows.length });
-      return { imported: rows.length, preview: rows, errors: [] };
+      return { imported: rows.length, preview: rows, errors: [], columns: parsed.columns };
     },
   }),
   "player.applyBasePrices": action({

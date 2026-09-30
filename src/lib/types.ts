@@ -49,6 +49,11 @@ export interface TeamPoolLimit {
   max_squad: number | null;
 }
 
+export interface PlayerDetail {
+  label: string;
+  value: string;
+}
+
 export interface Player {
   id: string;
   name: string;
@@ -60,6 +65,7 @@ export interface Player {
   base_price: number;
   photo_url: string | null;
   notes: string | null;
+  details: PlayerDetail[];
   status: PlayerStatus;
   sold_team_id: string | null;
   sold_price: number | null;

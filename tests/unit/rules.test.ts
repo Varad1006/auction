@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parsePlayerImport, normalizeRole } from "@/lib/import";
+import { classifyHeader, parsePlayerImport, normalizeRole } from "@/lib/import";
+import { photoUrlFrom } from "@/lib/photos";
 import { checkBid, incrementFor, minNextBid, parseIncrementTiers, quickBidAmounts, teamPoolSummary } from "@/lib/rules";
 import type { AuctionState, Player, PoolConfig } from "@/lib/types";
 
@@ -12,7 +13,7 @@ const config: PoolConfig = {
 
 const player = (over: Partial<Player> = {}): Player => ({
   id: "p1", name: "P", pool: "men", role: "Batter", batting_style: null, bowling_style: null,
-  grade: "C", base_price: 20, photo_url: null, notes: null, status: "pool", sold_team_id: null,
+  grade: "C", base_price: 20, photo_url: null, notes: null, details: [], status: "pool", sold_team_id: null,
   sold_price: null, decided_round: null, created_at: "", updated_at: "", ...over,
 });
 
@@ -74,8 +75,8 @@ describe("bulk import", () => {
     const r = parsePlayerImport(text, "men");
     expect(r.errors).toEqual([]);
     expect(r.players).toEqual([
-      { name: "Rohit S", pool: "men", role: "Batter", grade: "A", batting_style: "RHB", bowling_style: null, base_price: null, notes: "Opener" },
-      { name: "Anu K", pool: "men", role: "Wicket-keeper", grade: "B", batting_style: "LHB", bowling_style: null, base_price: 40, notes: null },
+      { name: "Rohit S", pool: "men", role: "Batter", grade: "A", batting_style: "RHB", bowling_style: null, base_price: null, notes: "Opener", photo_url: null, details: [] },
+      { name: "Anu K", pool: "men", role: "Wicket-keeper", grade: "B", batting_style: "LHB", bowling_style: null, base_price: 40, notes: null, photo_url: null, details: [] },
     ]);
   });
 
@@ -96,5 +97,41 @@ describe("bulk import", () => {
     expect(["batsman", "Bowl", "AR", "all-rounder", "Wicket Keeper", "wk-batter"].map(normalizeRole)).toEqual([
       "Batter", "Bowler", "All-rounder", "All-rounder", "Wicket-keeper", "Wicket-keeper",
     ]);
+  });
+
+  it("imports a Google Form responses sheet: keyword headers, private columns skipped, extras kept", () => {
+    const text = [
+      "Timestamp\tEmail Address\tFull Name\tGender\tMobile Number\tYear\tBranch\tPlaying Role\tBatting Style\tBowling Style\tUpload your photo\tAchievements",
+      '9/1/2025 10:00\ta@x.com\tRohan Patil\tMale\t9999999999\tTE\tCivil\tWicket Keeper Batsman\tRight-hand\tNone\thttps://drive.google.com/open?id=1AbCdEfGhIjKlMnOp\t"Captain 2024\nMoM in final"',
+    ].join("\n");
+    const r = parsePlayerImport(text, "women");
+    expect(r.errors).toEqual([]);
+    expect(r.players[0]).toMatchObject({
+      name: "Rohan Patil",
+      pool: "men",
+      role: "Wicket-keeper",
+      grade: "C",
+      batting_style: "Right-hand",
+      photo_url: "https://lh3.googleusercontent.com/d/1AbCdEfGhIjKlMnOp=w800",
+      details: [
+        { label: "Year", value: "TE" },
+        { label: "Branch", value: "Civil" },
+        { label: "Achievements", value: "Captain 2024\nMoM in final" },
+      ],
+    });
+    // Private columns never reach the (public) details.
+    expect(JSON.stringify(r.players[0])).not.toMatch(/a@x\.com|9999999999/);
+    expect(r.columns.find((c) => c.header === "Email Address")?.use).toBe("ignored (private)");
+  });
+
+  it("classifies headers and converts photo links", () => {
+    expect(["Full Name", "Gender", "Roll No", "WhatsApp number", "Speciality", "Photo"].map(classifyHeader)).toEqual([
+      "name", "pool", "skip", "skip", "role", "photo",
+    ]);
+    expect(photoUrlFrom("https://drive.google.com/file/d/1ZyXwVuTsRqPoNmLk/view?usp=drivesdk")).toBe(
+      "https://lh3.googleusercontent.com/d/1ZyXwVuTsRqPoNmLk=w800",
+    );
+    expect(photoUrlFrom("https://example.com/a.jpg")).toBe("https://example.com/a.jpg");
+    expect(photoUrlFrom("not a link")).toBeNull();
   });
 });

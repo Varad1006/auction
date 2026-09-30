@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { POOL_LABEL } from "@/lib/types";
 import { BidStatus } from "./BidStatus";
-import { PlayerCard } from "./PlayerCard";
+import { PlayerDeckCard } from "./PlayerDeckCard";
 import { useAuction } from "./useAuction";
 import { Wheel } from "./Wheel";
 
@@ -48,8 +48,8 @@ export function Stage() {
   if (player && (onBlock || state.phase === "sold" || state.phase === "unsold")) {
     const soldTeam = state.phase === "sold" && player.sold_team_id ? teamById.get(player.sold_team_id) : null;
     return (
-      <div className="space-y-3">
-        <PlayerCard
+      <div className="grid items-start gap-4 sm:grid-cols-[minmax(0,300px)_minmax(0,1fr)]">
+        <PlayerDeckCard
           key={`${player.id}:${spinKey}`}
           player={player}
           reveal

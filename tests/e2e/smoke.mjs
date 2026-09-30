@@ -126,9 +126,9 @@ async function open(cookies, device, path = "/") {
 }
 
 const adminPage = await open(admin, null, "/admin");
-const ownerPage = await open(owner1, "iPhone 13");
-const owner2Page = await open(owner2, "Pixel 7");
-const viewerPage = await open(null, "iPhone 13");
+const ownerPage = await open(owner1, "iPhone 13", "/live");
+const owner2Page = await open(owner2, "Pixel 7", "/live");
+const viewerPage = await open(null, "iPhone 13", "/live");
 const all = [adminPage, ownerPage, owner2Page, viewerPage];
 await Promise.all(all.map((p) => p.getByText("Waiting for the next spin").waitFor({ timeout: 15000 })));
 await viewerPage.screenshot({ path: `${SHOTS}/01-viewer-idle.png`, fullPage: true });

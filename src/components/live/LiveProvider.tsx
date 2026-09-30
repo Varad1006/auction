@@ -19,6 +19,8 @@ export interface LiveData {
   state: AuctionState | null;
   /** Bids on the player currently on the block (all rounds, including voided). */
   bids: Bid[];
+  /** Latest bids on any player, newest first (for the public bids feed). */
+  recentBids: Bid[];
   results: Result[];
 }
 
@@ -44,8 +46,11 @@ const initial: LiveData = {
   players: [],
   state: null,
   bids: [],
+  recentBids: [],
   results: [],
 };
+
+const RECENT_BIDS = 60;
 
 // Realtime payloads are decoded from Postgres; normalise the columns whose
 // encoding can differ from a PostgREST select.
@@ -124,10 +129,19 @@ function reducer(s: LiveData, a: Action): LiveData {
                 ),
           };
         case "bids": {
-          if (del) return { ...s, bids: s.bids.filter((b) => b.id !== Number(row.id)) };
+          if (del) {
+            return {
+              ...s,
+              bids: s.bids.filter((b) => b.id !== Number(row.id)),
+              recentBids: s.recentBids.filter((b) => b.id !== Number(row.id)),
+            };
+          }
           const bid = { ...(row as unknown as Bid), id: Number(row.id) };
-          if (bid.player_id !== s.state?.current_player_id) return s;
-          return { ...s, bids: upsert(s.bids, bid, (b) => b.id === bid.id).sort((x, y) => x.id - y.id) };
+          const recentBids = upsert(s.recentBids, bid, (b) => b.id === bid.id)
+            .sort((x, y) => y.id - x.id)
+            .slice(0, RECENT_BIDS);
+          if (bid.player_id !== s.state?.current_player_id) return { ...s, recentBids };
+          return { ...s, recentBids, bids: upsert(s.bids, bid, (b) => b.id === bid.id).sort((x, y) => x.id - y.id) };
         }
       }
     }
@@ -160,15 +174,16 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
     if (!isConfigured) return;
     const seq = ++loadSeq.current;
     const db = browserSupabase();
-    const [configs, teams, limits, players, state, results] = await Promise.all([
+    const [configs, teams, limits, players, state, results, recent] = await Promise.all([
       db.from("pool_config").select("*"),
       db.from("teams").select("*").order("sort_order").order("name"),
       db.from("team_pool_limits").select("*"),
       db.from("players").select("*").order("name"),
       db.from("auction_state").select("*").eq("id", 1).maybeSingle(),
       db.from("results").select("*").order("id"),
+      db.from("bids").select("*").order("id", { ascending: false }).limit(RECENT_BIDS),
     ]);
-    const failed = [configs, teams, limits, players, state, results].find((r) => r.error);
+    const failed = [configs, teams, limits, players, state, results, recent].find((r) => r.error);
     if (failed?.error) {
       dispatch({ type: "error", message: failed.error.message });
       return;
@@ -190,6 +205,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
         players: players.data as Player[],
         state: st,
         bids,
+        recentBids: (recent.data as Bid[]).map((b) => ({ ...b, id: Number(b.id) })),
         results: results.data as Result[],
       },
     });
