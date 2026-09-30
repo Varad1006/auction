@@ -55,24 +55,43 @@ export function Stage() {
   const freshResult = (state.phase === "sold" || state.phase === "unsold") && state.last_result_id !== resultAtLoad;
   if (player && (onBlock || freshResult)) {
     const soldTeam = state.phase === "sold" && player.sold_team_id ? teamById.get(player.sold_team_id) : null;
+    const status =
+      state.phase === "bidding"
+        ? { text: "Bidding open", cls: "bg-rose-500 text-white", pulse: true }
+        : state.phase === "sold"
+          ? { text: "Sold", cls: "bg-emerald-500 text-emerald-950", pulse: false }
+          : state.phase === "unsold"
+            ? { text: "Unsold", cls: "bg-slate-300 text-slate-900", pulse: false }
+            : { text: "On the block", cls: "bg-amber-400 text-amber-950", pulse: false };
     return (
-      <div className="@container">
-      <div className="grid grid-cols-1 items-start gap-4 @xl:grid-cols-[minmax(0,280px)_minmax(0,1fr)]">
-        <PlayerDeckCard
-          key={`${player.id}:${spinKey}`}
-          player={player}
-          reveal
-          soldTo={soldTeam ? { team: soldTeam, price: player.sold_price ?? 0 } : null}
-          unsold={state.phase === "unsold"}
-        />
-        {state.phase === "spinning" || state.phase === "revealed" ? (
-          <p className="rounded-xl bg-amber-400/10 p-3 text-center text-sm font-semibold text-amber-200 ring-1 ring-amber-400/30">
-            On the block: bidding opens shortly
-          </p>
-        ) : (
-          <BidStatus />
-        )}
-      </div>
+      <div className="@container space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-wider ${status.cls}`}>
+            {status.pulse && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />}
+            {status.text}
+          </span>
+          <span className="text-slate-400">
+            {POOL_LABEL[player.pool]} · Round {config?.current_round ?? 1} · {counts.pool} left in pool
+          </span>
+        </div>
+        <div className="grid grid-cols-1 items-start gap-4 @xl:grid-cols-[minmax(0,280px)_minmax(0,1fr)]">
+          <PlayerDeckCard
+            key={`${player.id}:${spinKey}`}
+            player={player}
+            reveal
+            size="md"
+            className="max-w-[200px] @md:max-w-[240px] @xl:max-w-none"
+            soldTo={soldTeam ? { team: soldTeam, price: player.sold_price ?? 0 } : null}
+            unsold={state.phase === "unsold"}
+          />
+          {state.phase === "spinning" || state.phase === "revealed" ? (
+            <p className="rounded-xl bg-amber-400/10 p-3 text-center text-sm font-semibold text-amber-200 ring-1 ring-amber-400/30">
+              Bidding opens shortly
+            </p>
+          ) : (
+            <BidStatus />
+          )}
+        </div>
       </div>
     );
   }

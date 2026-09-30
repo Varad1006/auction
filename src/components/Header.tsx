@@ -68,8 +68,9 @@ export function Header() {
               </div>
             </details>
           ) : connection !== "unconfigured" ? (
-            <button onClick={() => void signIn(window.location.pathname)} className="rounded-lg bg-white/10 px-3 py-1.5 font-semibold">
-              Owner sign-in
+            <button onClick={() => void signIn(window.location.pathname)} className="whitespace-nowrap rounded-lg bg-white/10 px-3 py-1.5 font-semibold">
+              <span className="sm:hidden">Sign in</span>
+              <span className="hidden sm:inline">Owner sign-in</span>
             </button>
           ) : null}
         </div>

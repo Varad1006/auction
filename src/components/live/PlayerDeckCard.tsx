@@ -23,12 +23,15 @@ export function PlayerDeckCard({
   unsold,
   reveal,
   size = "lg",
+  className,
 }: {
   player: Player;
   soldTo?: { team: Team; price: number } | null;
   unsold?: boolean;
   reveal?: boolean;
   size?: "lg" | "md";
+  /** Overrides the default max width. */
+  className?: string;
 }) {
   const [flipped, setFlipped] = useState(false);
   const theme = THEME;
@@ -40,7 +43,7 @@ export function PlayerDeckCard({
   ].filter(Boolean) as { label: string; value: string }[];
 
   return (
-    <div className={cn("mx-auto w-full [perspective:1200px]", size === "lg" ? "max-w-[340px]" : "max-w-[300px]", reveal && "reveal")}>
+    <div className={cn("mx-auto w-full [perspective:1200px]", className ?? (size === "lg" ? "max-w-[340px]" : "max-w-[300px]"), reveal && "reveal")}>
       <button
         type="button"
         onClick={() => setFlipped((f) => !f)}
