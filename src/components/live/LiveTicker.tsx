@@ -46,7 +46,7 @@ export function LiveTicker({ watch }: { watch: React.RefObject<HTMLElement | nul
           <span className="block font-black tabular-nums">{money(state.current_bid ?? player.base_price)}</span>
           {leader ? (
             <span className={cn("block max-w-[8rem] truncate rounded px-1.5 text-[11px] font-bold")} style={{ background: leader.color, color: textOn(leader.color) }}>
-              {leader.short_name}
+              {leader.name}
             </span>
           ) : (
             <span className="block text-[11px] text-slate-400">{state.phase === "bidding" ? "No bids yet" : "Base price"}</span>

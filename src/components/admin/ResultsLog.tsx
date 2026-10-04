@@ -62,7 +62,7 @@ export function ResultsLog() {
                     {POOL_LABEL[r.pool]} · R{r.round}
                   </td>
                   <td className="py-2 pr-3">
-                    {r.outcome === "sold" && t ? <TeamBadge team={t} full /> : <span className="text-slate-400">Unsold</span>}
+                    {r.outcome === "sold" && t ? <TeamBadge team={t} /> : <span className="text-slate-400">Unsold</span>}
                     {r.method === "manual" && <span className="ml-1 text-xs text-slate-500">(assigned)</span>}
                     {r.undone_at && <span className="ml-1 text-xs text-amber-400">undone</span>}
                   </td>

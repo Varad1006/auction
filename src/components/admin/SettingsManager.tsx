@@ -109,12 +109,12 @@ function PoolConfigForm({ config }: { config: PoolConfig }) {
 
 function TeamsEditor({ teams, limits }: { teams: Team[]; limits: TeamPoolLimit[] }) {
   const { busy, run } = useRunner();
-  const [adding, setAdding] = useState({ name: "", short_name: "", color: "#64748b" });
+  const [adding, setAdding] = useState({ name: "", color: "#64748b" });
   return (
     <Card title={`Teams (${teams.length})`}>
       <div className="space-y-4">
         {teams.map((t) => (
-          <TeamRow key={`${t.id}-${t.name}-${t.short_name}-${t.color}-${t.sort_order}`} team={t} limits={limits.filter((l) => l.team_id === t.id)} />
+          <TeamRow key={`${t.id}-${t.name}-${t.color}-${t.sort_order}`} team={t} limits={limits.filter((l) => l.team_id === t.id)} />
         ))}
         <form
           className="flex flex-wrap items-end gap-2 border-t border-white/10 pt-4"
@@ -124,14 +124,11 @@ function TeamsEditor({ teams, limits }: { teams: Team[]; limits: TeamPoolLimit[]
               "add",
               () => callAction("team.create", { ...adding, sort_order: teams.length + 1 }),
               "Team added",
-            ).then((r) => r && setAdding({ name: "", short_name: "", color: "#64748b" }));
+            ).then((r) => r && setAdding({ name: "", color: "#64748b" }));
           }}
         >
           <Field label="New team" className="min-w-40 flex-1">
             <input className={inputClass} required maxLength={40} placeholder="Name" value={adding.name} onChange={(e) => setAdding((s) => ({ ...s, name: e.target.value }))} />
-          </Field>
-          <Field label="Short" className="w-20">
-            <input className={inputClass} required maxLength={5} value={adding.short_name} onChange={(e) => setAdding((s) => ({ ...s, short_name: e.target.value.toUpperCase() }))} />
           </Field>
           <Field label="Colour" className="w-16">
             <input type="color" className="h-10 w-full rounded-lg bg-transparent" value={adding.color} onChange={(e) => setAdding((s) => ({ ...s, color: e.target.value }))} />
@@ -147,9 +144,9 @@ function TeamsEditor({ teams, limits }: { teams: Team[]; limits: TeamPoolLimit[]
 
 function TeamRow({ team, limits }: { team: Team; limits: TeamPoolLimit[] }) {
   const { busy, run } = useRunner();
-  const [f, setF] = useState({ name: team.name, short_name: team.short_name, color: team.color, sort_order: String(team.sort_order) });
+  const [f, setF] = useState({ name: team.name, color: team.color, sort_order: String(team.sort_order) });
   const [showLimits, setShowLimits] = useState(false);
-  const dirty = f.name !== team.name || f.short_name !== team.short_name || f.color !== team.color || f.sort_order !== String(team.sort_order);
+  const dirty = f.name !== team.name || f.color !== team.color || f.sort_order !== String(team.sort_order);
 
   return (
     <div className="rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/10">
@@ -159,16 +156,13 @@ function TeamRow({ team, limits }: { team: Team; limits: TeamPoolLimit[] }) {
           e.preventDefault();
           void run(
             "save",
-            () => callAction("team.update", { id: team.id, name: f.name, short_name: f.short_name, color: f.color, sort_order: Number(f.sort_order) || 0 }),
+            () => callAction("team.update", { id: team.id, name: f.name, color: f.color, sort_order: Number(f.sort_order) || 0 }),
             "Team saved",
           );
         }}
       >
         <Field label="Name" className="min-w-36 flex-1">
           <input className={inputClass} required maxLength={40} value={f.name} onChange={(e) => setF((s) => ({ ...s, name: e.target.value }))} />
-        </Field>
-        <Field label="Short" className="w-20">
-          <input className={inputClass} required maxLength={5} value={f.short_name} onChange={(e) => setF((s) => ({ ...s, short_name: e.target.value.toUpperCase() }))} />
         </Field>
         <Field label="Colour" className="w-16">
           <input type="color" className="h-10 w-full rounded-lg bg-transparent" value={f.color} onChange={(e) => setF((s) => ({ ...s, color: e.target.value }))} />

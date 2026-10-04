@@ -29,8 +29,7 @@ export function BidStatus() {
               {state.phase === "sold" ? "Bought by" : "Leading"}
             </p>
             <p className="truncate text-lg font-extrabold leading-tight">
-              <span className="@sm:hidden">{leader.short_name}</span>
-              <span className="hidden @sm:inline">{leader.name}</span>
+              {leader.name}
             </p>
           </div>
         ) : (

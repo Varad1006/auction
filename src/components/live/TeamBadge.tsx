@@ -1,13 +1,13 @@
 import { cn, textOn } from "@/lib/format";
 import type { Team } from "@/lib/types";
 
-export function TeamBadge({ team, className, full }: { team: Team; className?: string; full?: boolean }) {
+export function TeamBadge({ team, className }: { team: Team; className?: string }) {
   return (
     <span
-      className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs font-bold", className)}
+      className={cn("inline-block max-w-[11rem] truncate rounded-md px-2 py-0.5 align-middle text-xs font-bold", className)}
       style={{ background: team.color, color: textOn(team.color) }}
     >
-      {full ? team.name : team.short_name}
+      {team.name}
     </span>
   );
 }

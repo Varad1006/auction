@@ -111,7 +111,7 @@ export function AuctionControls() {
               run("sell", () => callAction("auction.sell", { playerId: player.id }), `Sold to ${leader.name}`)
             }
           >
-            {leader ? `SOLD to ${leader.short_name} · ${money(state.current_bid)}` : "Sell (waiting for a bid)"}
+            <span className="truncate">{leader ? `SOLD to ${leader.name} · ${money(state.current_bid)}` : "Sell (waiting for a bid)"}</span>
           </Button>
           <div className="grid grid-cols-2 gap-2">
             <Button
@@ -135,7 +135,7 @@ export function AuctionControls() {
           <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
             Bid for a team at {money(minNextBid(state, player, playerConfig))}
           </p>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-2">
             {teams.map((t) => {
               const amount = minNextBid(state, player, playerConfig);
               const s = sums.get(t.id);
@@ -150,7 +150,7 @@ export function AuctionControls() {
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: t.color }} />
-                    <span className="truncate font-semibold" title={t.name}>{t.short_name}</span>
+                    <span className="truncate font-semibold" title={t.name}>{t.name}</span>
                   </span>
                   <span className="shrink-0 text-xs text-slate-400">
                     {busy === `bid-${t.id}` ? "…" : check?.ok ? money(amount) : check?.code === "already_leading" ? "Leading" : check?.message.split(" (")[0]}

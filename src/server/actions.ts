@@ -281,12 +281,14 @@ export const actions = {
     roles: ["admin"],
     input: z.object({
       name: z.string().trim().min(1).max(40),
-      short_name: z.string().trim().min(1).max(5),
+      short_name: z.string().trim().min(1).max(5).optional(),
       color,
       sort_order: z.number().int().default(0),
     }),
     run: async ({ me, db }, i) => {
-      const team = await must(db.from("teams").insert(i).select().single());
+      // Short names aren't shown in the app any more; derive one for the column.
+      const short = i.short_name ?? (i.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 5).toUpperCase() || "T");
+      const team = await must(db.from("teams").insert({ ...i, short_name: short }).select().single());
       await audit(db, me.email, "create_team", { team_id: team.id, name: i.name });
       return team;
     },

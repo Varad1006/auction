@@ -26,7 +26,6 @@ export function TeamsPage() {
               >
                 <div className="flex items-center justify-between px-4 py-3" style={{ background: t.color, color: textOn(t.color) }}>
                   <span className="text-lg font-black">{t.name}</span>
-                  <span className="text-sm font-bold opacity-80">{t.short_name}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-px bg-white/5">
                   {POOLS.map((p) => {
@@ -77,7 +76,6 @@ export function TeamDetailPage({ teamId }: { teamId: string }) {
     <div className="space-y-5">
       <Link href="/teams" className="text-sm text-slate-400 hover:text-slate-200">← All teams</Link>
       <div className="rounded-2xl px-5 py-5" style={{ background: team.color, color: textOn(team.color) }}>
-        <p className="text-sm font-bold opacity-80">{team.short_name}</p>
         <h1 className="text-3xl font-black">{team.name}</h1>
       </div>
       <div className="grid gap-5 lg:grid-cols-2">

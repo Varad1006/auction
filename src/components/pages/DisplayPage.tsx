@@ -215,8 +215,8 @@ export function DisplayPage() {
                       <span className="truncate font-semibold">{p?.name}</span>
                       {r.outcome === "sold" && t ? (
                         <span className="flex shrink-0 items-center gap-[0.5vw]">
-                          <span className="rounded px-[0.4vw] text-[0.85vw] font-black" style={{ background: t.color, color: textOn(t.color) }}>
-                            {t.short_name}
+                          <span className="max-w-[12vw] truncate rounded px-[0.4vw] text-[0.85vw] font-black" style={{ background: t.color, color: textOn(t.color) }}>
+                            {t.name}
                           </span>
                           <b className="tabular-nums">{money(r.price)}</b>
                         </span>

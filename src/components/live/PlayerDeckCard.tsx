@@ -90,15 +90,16 @@ export function PlayerDeckCard({
           </div>
           {soldTo && (
             <div
-              className="stamp absolute right-3 top-16 rotate-[-8deg] rounded-lg px-3 py-1.5 text-right font-black uppercase shadow-xl ring-2 ring-white/40"
+              className="stamp absolute inset-x-4 top-[27%] rotate-[-4deg] rounded-lg px-3 py-2 text-center font-black uppercase shadow-xl ring-2 ring-white/40"
               style={{ background: soldTo.team.color, color: textOn(soldTo.team.color) }}
             >
-              <span className="block text-[10px] tracking-[0.3em]">Sold</span>
-              <span className="block text-sm">{soldTo.team.short_name} · {money(soldTo.price)}</span>
+              <span className="block text-[10px] tracking-[0.3em]">Sold to</span>
+              <span className="block text-sm leading-tight [overflow-wrap:anywhere]">{soldTo.team.name}</span>
+              <span className="block text-sm">{money(soldTo.price)}</span>
             </div>
           )}
           {unsold && (
-            <div className="stamp absolute right-3 top-16 rotate-[-8deg] rounded-lg bg-slate-200 px-3 py-1.5 font-black uppercase tracking-[0.3em] text-slate-900 shadow-xl">
+            <div className="stamp absolute inset-x-4 top-[27%] rotate-[-4deg] rounded-lg bg-slate-200 px-3 py-2 text-center font-black uppercase tracking-[0.3em] text-slate-900 shadow-xl">
               Unsold
             </div>
           )}

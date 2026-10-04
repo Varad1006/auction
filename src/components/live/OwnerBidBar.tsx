@@ -86,7 +86,7 @@ export function OwnerBidBar({ teamId }: { teamId: string }) {
         <div className="mb-2 flex items-center justify-between gap-2 text-xs text-slate-400">
           <span className="flex min-w-0 items-center gap-2 font-semibold text-slate-200">
             <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: team.color }} />
-            <span className="truncate">{team.short_name}</span>
+            <span className="truncate">{team.name}</span>
             <button
               type="button"
               onClick={() => {

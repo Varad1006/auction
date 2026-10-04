@@ -54,8 +54,7 @@ export function TeamsBoard({ highlightTeamId, compact }: { highlightTeamId?: str
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: t.color }} />
-                    <span className="truncate font-semibold sm:hidden">{t.short_name}</span>
-                    <span className="hidden truncate font-semibold sm:inline">{t.name}</span>
+                    <span className="truncate font-semibold">{t.name}</span>
                     {leading && <span className="hidden shrink-0 rounded bg-emerald-500 px-1 text-[10px] font-bold uppercase text-emerald-950 sm:inline">Lead</span>}
                   </span>
                   <span className="text-right font-bold tabular-nums">{num(s?.remaining)}</span>
