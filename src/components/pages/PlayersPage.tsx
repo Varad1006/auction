@@ -7,6 +7,7 @@ import { PLAYER_ROLES, POOL_LABEL, POOLS, type Player, type Pool } from "@/lib/t
 import { PlayerDeckCard } from "../live/PlayerDeckCard";
 import { TeamBadge } from "../live/TeamBadge";
 import { useAuction } from "../live/useAuction";
+import { WishlistStar } from "../owner/WishlistStar";
 import { inputClass, Modal } from "../ui";
 
 type Status = "pool" | "sold" | "unsold" | "all";
@@ -88,7 +89,7 @@ export function PlayersPage() {
             const team = p.sold_team_id ? teamById.get(p.sold_team_id) : null;
             const onBlock = state?.current_player_id === p.id && ["spinning", "revealed", "bidding"].includes(state.phase);
             return (
-              <li key={p.id}>
+              <li key={p.id} className="relative">
                 <button
                   onClick={() => setOpen(p)}
                   className={cn(
@@ -124,6 +125,7 @@ export function PlayersPage() {
                     </div>
                   </div>
                 </button>
+                <WishlistStar playerId={p.id} playerName={p.name} disabled={p.status === "sold"} className="absolute left-2 top-2" />
               </li>
             );
           })}
@@ -140,6 +142,9 @@ export function PlayersPage() {
               unsold={live.status === "unsold"}
             />
             <p className="text-center text-xs text-slate-500">Tap the card to flip it.</p>
+            <div className="flex justify-center">
+              <WishlistStar playerId={live.id} playerName={live.name} disabled={live.status === "sold"} withLabel />
+            </div>
           </div>
         )}
       </Modal>

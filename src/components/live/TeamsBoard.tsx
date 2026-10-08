@@ -7,11 +7,20 @@ import { useAuction } from "./useAuction";
 
 const num = (n: number | undefined) => (n === undefined ? "–" : n.toLocaleString("en-IN"));
 
-export function TeamsBoard({ highlightTeamId, compact }: { highlightTeamId?: string | null; compact?: boolean }) {
+export function TeamsBoard({
+  highlightTeamId,
+  compact,
+  initialPool,
+}: {
+  highlightTeamId?: string | null;
+  compact?: boolean;
+  /** Pool to show first (defaults to the pool being auctioned). */
+  initialPool?: Pool;
+}) {
   const { teams, players, pool: currentPool, summaries, state } = useAuction();
   const [chosenPool, setPool] = useState<Pool | null>(null);
   const [open, setOpen] = useState<string | null>(null);
-  const pool = chosenPool ?? currentPool;
+  const pool = chosenPool ?? initialPool ?? currentPool;
   const sums = summaries(pool);
 
   return (

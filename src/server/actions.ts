@@ -1,12 +1,15 @@
 import "server-only";
 
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
+import { after } from "next/server";
 import { z } from "zod";
 import { parsePlayerImport } from "@/lib/import";
 import { photoUrlFrom } from "@/lib/photos";
-import { REG_BUCKET } from "./registration";
 import { basePriceFor } from "@/lib/rules";
-import { GRADES, PLAYER_ROLES, POOLS, type Me, type PoolConfig, type Role } from "@/lib/types";
+import { GRADES, PLAYER_ROLES, POOLS, type AuctionState, type Me, type PoolConfig, type Role } from "@/lib/types";
+import { WISHLIST_MAX } from "@/lib/wishlist";
+import { isPushEndpoint, notifyWishlist, sendTestPush } from "./push";
+import { REG_BUCKET } from "./registration";
 
 // Every write in the app is one of these actions. /api/actions/[action]
 // checks `roles` against the caller's server-resolved role before `run` is
@@ -26,6 +29,8 @@ export class ActionError extends Error {
 interface Ctx {
   me: Me & { email: string };
   db: SupabaseClient;
+  /** The site's origin, e.g. https://auction.example.com. */
+  origin: string;
 }
 
 interface ActionDef<S extends z.ZodType> {
@@ -107,24 +112,44 @@ async function poolConfig(db: SupabaseClient, p: string): Promise<PoolConfig> {
   return mustOne<PoolConfig>(db.from("pool_config").select("*").eq("pool", p).single());
 }
 
+/** The caller's own team (owners only ever touch their own team's data). */
+function ownTeam(me: Me): string {
+  if (!me.teamId) throw new ActionError(403, "no_team", "Your account isn't linked to a team");
+  return me.teamId;
+}
+
+/**
+ * Push-notifies owners who wishlisted the player now on the block. Runs after
+ * the response is sent, timed to land as the wheel stops.
+ */
+function notifyAfter(ctx: Ctx, s: AuctionState, delayMs: number) {
+  const playerId = s.current_player_id;
+  if (!playerId) return;
+  after(async () => {
+    if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
+    await notifyWishlist(ctx.db, playerId, ctx.origin).catch((e) => console.error("Wishlist notification failed", e));
+  });
+}
+
+const WISHLIST_COLS = "player_id, priority, max_price, note, created_at, updated_at";
+const priority = z.union([z.literal(1), z.literal(2), z.literal(3)]);
+
 export const actions = {
   // ---- Bidding --------------------------------------------------------------
+  // The auctioneer enters every bid for the team that raised its paddle;
+  // owners don't bid from the app.
   "bid.place": action({
-    roles: ["owner", "admin"],
-    input: z.object({ playerId: uuid, amount: money, teamId: uuid.optional() }),
-    run: ({ me, db }, i) => {
-      // Owners always bid for their own team, whatever the request says.
-      const teamId = me.role === "owner" ? me.teamId : i.teamId;
-      if (!teamId) throw new ActionError(400, "team_required", "Choose a team");
-      return rpc(db, "auction_place_bid", {
+    roles: ["admin"],
+    input: z.object({ playerId: uuid, amount: money, teamId: uuid }),
+    run: ({ me, db }, i) =>
+      rpc(db, "auction_place_bid", {
         p_actor: me.email,
         p_actor_role: me.role,
-        p_actor_team: me.teamId,
-        p_team_id: teamId,
+        p_actor_team: null,
+        p_team_id: i.teamId,
         p_player_id: i.playerId,
         p_amount: i.amount,
-      });
-    },
+      }),
   }),
   "bid.undo": action({
     roles: ["admin"],
@@ -136,12 +161,20 @@ export const actions = {
   "auction.spin": action({
     roles: ["admin"],
     input: z.object({ durationMs: z.number().int().min(1000).max(15000).default(6000) }),
-    run: ({ me, db }, i) => rpc(db, "auction_spin", { p_actor: me.email, p_duration_ms: i.durationMs }),
+    run: async (ctx, i) => {
+      const s = await rpc<AuctionState>(ctx.db, "auction_spin", { p_actor: ctx.me.email, p_duration_ms: i.durationMs });
+      notifyAfter(ctx, s, Math.min(Math.max(s.spin_duration_ms - 1000, 0), 5000));
+      return s;
+    },
   }),
   "auction.select": action({
     roles: ["admin"],
     input: z.object({ playerId: uuid }),
-    run: ({ me, db }, i) => rpc(db, "auction_select_player", { p_actor: me.email, p_player_id: i.playerId }),
+    run: async (ctx, i) => {
+      const s = await rpc<AuctionState>(ctx.db, "auction_select_player", { p_actor: ctx.me.email, p_player_id: i.playerId });
+      notifyAfter(ctx, s, 0);
+      return s;
+    },
   }),
   "auction.openBidding": action({
     roles: ["admin"],
@@ -442,6 +475,86 @@ export const actions = {
       const row = await must(db.from("registration_settings").upsert({ id: 1, ...i }).select().single());
       await audit(db, me.email, "registration_settings", { is_open: i.is_open });
       return row;
+    },
+  }),
+
+  // ---- Owner wishlists (private to each team) -------------------------------
+  "wishlist.add": action({
+    roles: ["owner"],
+    input: z.object({ playerId: uuid, priority: priority.default(2), maxPrice: money.nullish(), note: optText(300) }),
+    run: async ({ me, db }, i) => {
+      const teamId = ownTeam(me);
+      const player = await mustOne<{ status: string }>(db.from("players").select("status").eq("id", i.playerId).maybeSingle());
+      if (player.status === "sold") throw new ActionError(409, "player_sold", "That player is already sold");
+      const { count } = await db.from("wishlist").select("player_id", { count: "exact", head: true }).eq("team_id", teamId);
+      if ((count ?? 0) >= WISHLIST_MAX) throw new ActionError(409, "wishlist_full", `A wishlist holds at most ${WISHLIST_MAX} players`);
+      // Adding a player twice keeps the first entry (and its notes).
+      const row = { team_id: teamId, player_id: i.playerId, priority: i.priority, max_price: i.maxPrice ?? null, note: i.note, added_by: me.email };
+      await must(db.from("wishlist").upsert(row, { onConflict: "team_id,player_id", ignoreDuplicates: true }).select("player_id"));
+      return mustOne(db.from("wishlist").select(WISHLIST_COLS).eq("team_id", teamId).eq("player_id", i.playerId).maybeSingle());
+    },
+  }),
+  "wishlist.update": action({
+    roles: ["owner"],
+    input: z.object({
+      playerId: uuid,
+      priority: priority.optional(),
+      maxPrice: money.nullable().optional(),
+      note: z.string().trim().max(300).nullable().optional(),
+    }),
+    run: async ({ me, db }, i) => {
+      const patch: Record<string, unknown> = {};
+      if (i.priority !== undefined) patch.priority = i.priority;
+      if (i.maxPrice !== undefined) patch.max_price = i.maxPrice;
+      if (i.note !== undefined) patch.note = i.note || null;
+      if (!Object.keys(patch).length) throw new ActionError(400, "invalid_input", "Nothing to change");
+      return mustOne(
+        db.from("wishlist").update(patch).eq("team_id", ownTeam(me)).eq("player_id", i.playerId).select(WISHLIST_COLS).maybeSingle(),
+      );
+    },
+  }),
+  "wishlist.remove": action({
+    roles: ["owner"],
+    input: z.object({ playerId: uuid }),
+    run: async ({ me, db }, i) => {
+      await must(db.from("wishlist").delete().eq("team_id", ownTeam(me)).eq("player_id", i.playerId).select("player_id"));
+      return null;
+    },
+  }),
+
+  // ---- Push notifications (owners) -------------------------------------------
+  "push.subscribe": action({
+    roles: ["owner"],
+    input: z.object({
+      endpoint: z.string().max(1000),
+      keys: z.object({ p256dh: z.string().min(1).max(200), auth: z.string().min(1).max(100) }),
+    }),
+    run: async ({ me, db }, i) => {
+      if (!isPushEndpoint(i.endpoint)) throw new ActionError(400, "bad_endpoint", "This browser's push service isn't supported");
+      await must(
+        db
+          .from("push_subscriptions")
+          .upsert({ endpoint: i.endpoint, email: me.email, p256dh: i.keys.p256dh, auth: i.keys.auth })
+          .select("endpoint"),
+      );
+      return null;
+    },
+  }),
+  "push.unsubscribe": action({
+    roles: ["owner"],
+    input: z.object({ endpoint: z.string().max(1000) }),
+    run: async ({ me, db }, i) => {
+      await must(db.from("push_subscriptions").delete().eq("endpoint", i.endpoint).eq("email", me.email).select("endpoint"));
+      return null;
+    },
+  }),
+  "push.test": action({
+    roles: ["owner"],
+    input: z.object({}),
+    run: async ({ me, db, origin }) => {
+      const sent = await sendTestPush(db, me.email, origin);
+      if (!sent) throw new ActionError(409, "not_subscribed", "Notifications aren't turned on for this account yet");
+      return { sent };
     },
   }),
 

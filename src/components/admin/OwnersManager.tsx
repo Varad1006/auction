@@ -65,7 +65,8 @@ export function OwnersManager() {
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
       <Card title="Team owners">
         <p className="mb-4 text-sm text-slate-400">
-          Anyone who signs in with one of these Gmail addresses can bid for that team. Teams can have several owners.
+          Anyone who signs in with one of these Gmail addresses gets that team&apos;s private wishlist and alerts. Teams can have
+          several owners, who share one wishlist. Bids are entered by the auctioneer.
           Changes apply on the owner&apos;s next action; no need for them to sign in again.
         </p>
         <form onSubmit={save} className="mb-5 grid gap-2 sm:grid-cols-[1fr_10rem_auto] sm:items-end">

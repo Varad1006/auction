@@ -19,7 +19,7 @@ Google, Realtime, Storage) · Tailwind CSS.
 | Role | Who | Can do |
 |---|---|---|
 | **Admin** | Gmail addresses in `ADMIN_EMAILS` | Everything: run the auction, bid on a team's behalf, undo, manage players/teams/settings/owners, export CSV |
-| **Owner** | Emails you map to a team on **Admin → Owners** | Bid for *their own team only*; sees everything else read-only |
+| **Owner** | Emails you map to a team on **Admin → Owners** | Keeps their team's private **wishlist**, gets alerts when a wishlisted player comes up, and sees planning numbers; everything else read-only. Owners don't bid in the app: they raise a paddle and the auctioneer enters the bid |
 | **Viewer** | Anyone with the link, no sign-in | Watch the wheel, current player, bids, purses, rosters and results |
 
 A signed-in Gmail that is neither an admin nor an owner is a viewer. Only
@@ -104,7 +104,7 @@ enough for this event (see [Limits](#limits)).
    `xltgjnmeccyzncstgtlv`).
 2. **Create the database schema**, using one of these:
    - **SQL Editor** (simplest): open **SQL Editor → New query**, then paste
-     and **Run** each file in `supabase/migrations/`, in filename order (5
+     and **Run** each file in `supabase/migrations/`, in filename order (8
      files).
    - **Script over HTTPS:** create a personal access token (avatar →
      **Account preferences → Access Tokens**), then run
@@ -182,20 +182,28 @@ availability and notes on the player card. **CSV** exports everything (useful fo
 
 ## Running the event
 
-- **Admin (laptop):** Admin → Auction. Spin → Open bidding → owners bid (or
-  tap a team to bid on its behalf, or type a custom amount) → **SOLD** or
-  **Mark unsold**. Switch between Men and Women at any time between players.
+- **Admin (laptop):** Admin → Auction. Spin → Open bidding → tap the team that
+  raised its paddle (or type a custom amount) → **SOLD** or **Mark unsold**.
+  Switch between Men and Women at any time between players.
 - **Owners (phones):** open the site, tap **Owner sign-in**, then use **Add to
   Home Screen** (iOS Safari: Share → Add to Home Screen; Android Chrome: menu →
-  Install app). The bid bar at the bottom shows one-tap bids, with the reason
-  whenever a bid isn't allowed.
+  Install app). The **★ Wishlist** tab is their planning screen:
+  - star players (also from the Players page), mark them *Must-have / Want / Backup*, set the most
+    they'll pay and keep private notes. The wishlist is shared by the team's owners and hidden from
+    everyone else;
+  - **alerts**: when a wishlisted player is spun or picked, their phones get a notification (turn it
+    on once per phone with *Turn on alerts*; on iPhone this needs the installed app, iOS 16.4+), plus
+    a chime and banner in the app. Players sold to other teams drop off the list automatically;
+  - planning numbers: purse left, max bid, average per remaining slot, whether the wishlist fits the
+    purse, squad balance by role, average prices so far by role, and, for the player on the block,
+    which rivals can still afford them and who is missing that role.
 - **Viewers:** just share the site URL. No sign-in needed.
 - **Projector / TV:** open `https://<your-site>/display` on the laptop connected to the projector
   (also linked as *Projector view ↗* in the admin menu) and click **Full screen**. It shows the
   wheel, the player, the current bid and team purses in large type, and updates live.
-- **Outbid alerts:** owners' phones beep, vibrate and show a message when another team takes the
-  lead, and chime when they win a player. The 🔔 button in the bid bar mutes it. Phones only allow
-  sound after the owner has tapped the page once.
+- **Owner alerts:** owners' phones also beep when another team takes the lead from them, and chime
+  when they win a player. The 🔔 button in the owner bar mutes sounds. Phones only allow sound after
+  the owner has tapped the page once.
 - **Export:** Admin → Results → *Squads CSV* / *Results log CSV*.
 
 ### Limits
@@ -235,7 +243,8 @@ Project layout:
 supabase/migrations/   schema, auction functions, access rules, defaults
 src/server/            role resolution, action registry (all writes), Supabase clients
 src/app/api/           actions, me, heartbeat, admin overview/photo/export
-src/components/live/   realtime store, wheel, player card, bid status, teams, results, owner bid bar
+src/components/live/   realtime store, wheel, player card, bid status, teams, results
+src/components/owner/  wishlist page, owner bar and alerts, push notification toggle
 src/components/admin/  auction controls, players, settings, owners, results
 public/sw.js           service worker (never caches live data)
 tests/                 unit, database and end-to-end tests

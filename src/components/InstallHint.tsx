@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { platform } from "@/lib/platform";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -8,17 +9,6 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 const KEY = "auction:install-hint";
-
-function platform(): "ios" | "ios-inapp" | "other" | "installed" {
-  const ua = navigator.userAgent;
-  const standalone =
-    window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
-  if (standalone) return "installed";
-  const ios = /iPhone|iPad|iPod/.test(ua) || (ua.includes("Macintosh") && navigator.maxTouchPoints > 1);
-  if (!ios) return "other";
-  // In-app browsers (WhatsApp, Instagram, Facebook...) can't add to home screen.
-  return /FBAN|FBAV|Instagram|WhatsApp|Line\//.test(ua) ? "ios-inapp" : "ios";
-}
 
 function dismissed(): boolean {
   try {

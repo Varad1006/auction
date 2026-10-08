@@ -34,6 +34,18 @@ function play(notes: [freq: number, start: number, duration: number][], type: Os
 }
 
 export const sounds = {
+  /** Bright two-note chime: a wishlisted player is up. */
+  wishlist: () =>
+    play(
+      [
+        [880, 0, 0.18],
+        [1319, 0.15, 0.4],
+        [880, 0.6, 0.18],
+        [1319, 0.75, 0.4],
+      ],
+      "sine",
+      0.25,
+    ),
   /** Two sharp descending beeps. */
   outbid: () =>
     play(

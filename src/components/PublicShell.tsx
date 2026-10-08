@@ -6,8 +6,9 @@ import { cn } from "@/lib/format";
 import { Header } from "./Header";
 import { InstallHint } from "./InstallHint";
 import { useLive } from "./live/LiveProvider";
-import { OwnerBidBar } from "./live/OwnerBidBar";
 import { useMe } from "./MeProvider";
+import { OwnerBar } from "./owner/OwnerBar";
+import { WishlistProvider } from "./owner/WishlistProvider";
 import { SetupNotice } from "./SetupNotice";
 
 const TABS = [
@@ -18,7 +19,9 @@ const TABS = [
   { href: "/bids", label: "Results" },
 ];
 
-/** Header, page tabs and (for owners) the bid bar, shared by every public page. */
+const OWNER_TAB = { href: "/wishlist", label: "★ Wishlist" };
+
+/** Header, page tabs and (for owners) the wishlist bar, shared by every public page. */
 export function PublicShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const { me } = useMe();
@@ -26,12 +29,14 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
   const ownerTeam = me?.role === "owner" ? me.teamId : null;
   const liveNow = state?.phase === "bidding" || state?.phase === "spinning" || state?.phase === "revealed";
 
+  const tabs = ownerTeam ? [...TABS.slice(0, 2), OWNER_TAB, ...TABS.slice(2)] : TABS;
+
   return (
-    <>
+    <WishlistProvider>
       <Header />
       <nav className="sticky top-[calc(env(safe-area-inset-top)+3.5rem)] z-20 border-b border-white/10 bg-slate-950/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-3 [scrollbar-width:none]">
-          {TABS.map((t) => {
+          {tabs.map((t) => {
             const active = t.href === "/" ? path === "/" : path.startsWith(t.href);
             return (
               <Link
@@ -51,8 +56,8 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
       </nav>
       <SetupNotice />
       <InstallHint />
-      <main className={cn("mx-auto max-w-6xl px-4 py-4 lg:py-6", ownerTeam ? "pb-44" : "pb-12")}>{children}</main>
-      {ownerTeam && <OwnerBidBar teamId={ownerTeam} />}
-    </>
+      <main className={cn("mx-auto max-w-6xl px-4 py-4 lg:py-6", ownerTeam ? "pb-36" : "pb-12")}>{children}</main>
+      {ownerTeam && <OwnerBar teamId={ownerTeam} />}
+    </WishlistProvider>
   );
 }

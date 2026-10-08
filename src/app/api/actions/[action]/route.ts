@@ -4,6 +4,8 @@ import { isSameOrigin, jsonError, requireRole } from "@/server/http";
 import { adminSupabase } from "@/server/supabase";
 
 export const dynamic = "force-dynamic";
+// Wishlist notifications are sent after the response (see notifyAfter).
+export const maxDuration = 30;
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ action: string }> }) {
   const { action: name } = await params;
@@ -35,7 +37,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ act
     // The union of all action inputs collapses to never here; each def's
     // input schema has just validated the value for its own run().
     const run = def.run as (ctx: Parameters<typeof def.run>[0], input: unknown) => Promise<unknown>;
-    const data = await run({ me: guard.me, db: adminSupabase() }, parsed.data);
+    const data = await run({ me: guard.me, db: adminSupabase(), origin: req.headers.get("origin") ?? req.nextUrl.origin }, parsed.data);
     return NextResponse.json({ ok: true, data: data ?? null }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     if (e instanceof ActionError) return jsonError(e.status, e.code, e.message);

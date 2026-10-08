@@ -14,11 +14,12 @@ export default function PrivacyPage() {
       <h2 className="pt-2 text-lg font-bold text-white">What we collect</h2>
       <p>
         Team owners and organisers sign in with Google. We receive only your name, email address and profile picture,
-        and use them to decide whether you may bid for a team or run the auction, and to show organisers who is signed in.
+        and use them to decide whether you own a team or run the auction, and to show organisers who is signed in.
       </p>
       <p>
-        We store the auction itself: players, bids, results and which team owner placed each bid. We don&apos;t use cookies
-        for tracking or advertising, and we don&apos;t sell or share your data.
+        We store the auction itself: players, bids and results. For team owners we also store their team&apos;s private
+        wishlist and, if they turn on alerts, the browser address needed to send notifications to their phone. We
+        don&apos;t use cookies for tracking or advertising, and we don&apos;t sell or share your data.
       </p>
       <h2 className="pt-2 text-lg font-bold text-white">Retention and deletion</h2>
       <p>
