@@ -19,7 +19,7 @@ const TEXT: Record<PushStatus, string> = {
 
 /** Turns wishlist push notifications on/off for this device. */
 export function PushToggle() {
-  const { vapidPublicKey } = useWishlist();
+  const { vapidPublicKey, preview } = useWishlist();
   const toast = useToast();
   const [status, setStatus] = useState<PushStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,6 +34,19 @@ export function PushToggle() {
     };
   }, []);
 
+  if (preview) {
+    return (
+      <section className="flex items-center gap-3 rounded-2xl bg-white/5 p-4 text-sm ring-1 ring-white/10">
+        <span className="text-2xl" aria-hidden>
+          🔔
+        </span>
+        <p className="text-slate-300">
+          <b>Wishlist alerts</b> — owners turn on phone notifications here. Not available in preview; the in-app chime and banner
+          still work.
+        </p>
+      </section>
+    );
+  }
   if (!status) return null;
 
   async function run(fn: () => Promise<PushStatus | void>, done?: string) {

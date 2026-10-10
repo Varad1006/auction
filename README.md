@@ -197,6 +197,9 @@ availability and notes on the player card. **CSV** exports everything (useful fo
   - planning numbers: purse left, max bid, average per remaining slot, whether the wishlist fits the
     purse, squad balance by role, average prices so far by role, and, for the player on the block,
     which rivals can still afford them and who is missing that role.
+- **Preview the owner view (admins):** the **★ Wishlist** tab (or **Admin → Owner view**) lets an
+  admin pick a team and see exactly what its owner sees, with that team's real purse and squad.
+  It uses a practice wishlist saved only in the admin's browser; teams' real wishlists stay private.
 - **Viewers:** just share the site URL. No sign-in needed.
 - **Projector / TV:** open `https://<your-site>/display` on the laptop connected to the projector
   (also linked as *Projector view ↗* in the admin menu) and click **Full screen**. It shows the

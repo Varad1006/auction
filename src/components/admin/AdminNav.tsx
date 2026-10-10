@@ -33,11 +33,14 @@ export function AdminNav() {
             </Link>
           );
         })}
+        <Link href="/wishlist" className="ml-auto whitespace-nowrap px-3 py-3 text-sm font-semibold text-amber-300 hover:text-amber-200">
+          Owner view
+        </Link>
         <a
           href="/display"
           target="_blank"
           rel="noreferrer"
-          className="ml-auto whitespace-nowrap px-3 py-3 text-sm font-semibold text-amber-300 hover:text-amber-200"
+          className="whitespace-nowrap px-3 py-3 text-sm font-semibold text-amber-300 hover:text-amber-200"
         >
           Projector view ↗
         </a>

@@ -5,12 +5,12 @@ import { LiveTicker } from "../live/LiveTicker";
 import { ResultsFeed } from "../live/ResultsFeed";
 import { Stage } from "../live/Stage";
 import { TeamsBoard } from "../live/TeamsBoard";
-import { useMe } from "../MeProvider";
+import { useWishlist } from "../owner/WishlistProvider";
 
 /** The live block (wheel, player card, current bid and history), team purses and results. */
 export function LivePage() {
-  const { me } = useMe();
-  const ownerTeam = me?.role === "owner" ? me.teamId : null;
+  const { enabled, teamId } = useWishlist();
+  const ownerTeam = enabled ? teamId : null;
   const stageRef = useRef<HTMLDivElement>(null);
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">

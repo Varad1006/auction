@@ -48,9 +48,10 @@ function Thumb({ player, className }: { player: Player; className?: string }) {
 /** Wishlist and planning screen for team owners. */
 export function WishlistPage() {
   const { me, signIn } = useMe();
-  const { enabled, teamId } = useWishlist();
+  const { enabled, teamId, canPreview } = useWishlist();
 
   if (!me) return <p className="animate-pulse py-16 text-center text-slate-400">Loading…</p>;
+  if ((!enabled || !teamId) && canPreview) return <PreviewPicker />;
   if (!enabled || !teamId) {
     return (
       <div className="mx-auto max-w-lg rounded-2xl bg-slate-900 p-6 text-center ring-1 ring-white/10">
@@ -74,6 +75,35 @@ export function WishlistPage() {
     );
   }
   return <OwnerWishlist teamId={teamId} />;
+}
+
+/** Lets an admin open the owner screens as a team. */
+function PreviewPicker() {
+  const { teams } = useAuction();
+  const { setPreviewTeam } = useWishlist();
+  return (
+    <div className="mx-auto max-w-lg rounded-2xl bg-slate-900 p-6 ring-1 ring-white/10">
+      <h1 className="text-xl font-bold">Preview the owner view</h1>
+      <p className="mt-2 text-sm text-slate-400">
+        See exactly what a team owner sees: the wishlist, alerts and planning numbers, using that team&apos;s real purse and squad.
+        You get a practice wishlist saved only in this browser. Teams&apos; real wishlists stay private to their owners.
+      </p>
+      <ul className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {teams.map((t) => (
+          <li key={t.id}>
+            <button
+              type="button"
+              onClick={() => setPreviewTeam(t.id)}
+              className="flex w-full items-center gap-2 rounded-xl bg-white/5 px-3 py-2.5 text-left font-semibold ring-1 ring-white/10 hover:bg-white/10"
+            >
+              <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: t.color }} />
+              <span className="truncate">View as {t.name}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 function OwnerWishlist({ teamId }: { teamId: string }) {
@@ -101,7 +131,11 @@ function OwnerWishlist({ teamId }: { teamId: string }) {
         <div className="min-w-0">
           <h1 className="text-2xl font-black tracking-tight">Your wishlist</h1>
           <p className="text-sm text-slate-400">
-            Private to {team ? <TeamBadge team={team} /> : "your team"} — other teams can&apos;t see it.
+            {wishlist.preview ? (
+              <>Preview as {team ? <TeamBadge team={team} /> : "this team"} — a practice list, not the team&apos;s real wishlist.</>
+            ) : (
+              <>Private to {team ? <TeamBadge team={team} /> : "your team"} — other teams can&apos;t see it.</>
+            )}
           </p>
         </div>
         <div className="flex rounded-xl bg-white/5 p-1" role="tablist" aria-label="Pool">

@@ -332,6 +332,23 @@ check(pushes.filter((p) => p.path === "/push/owner1").length === 0, "owners who 
 await act(admin, "auction.returnToPool", {});
 pushServer.close();
 
+// Admin preview of the owner view: a practice list in the browser only.
+const owner2Before = (await (await wishlistOf(owner2)).json()).entries.length;
+await adminPage.goto(`${APP}/wishlist`);
+await adminPage.getByRole("button", { name: `View as ${team2.name}` }).click();
+await adminPage.getByText("Owner view preview").waitFor({ timeout: 5000 });
+await adminPage.getByRole("heading", { name: "Your wishlist" }).waitFor();
+await adminPage.getByRole("tablist", { name: "Pool" }).getByRole("tab", { name: /^Men/ }).click();
+await adminPage.getByRole("button", { name: /^Add .* to wishlist$/ }).first().click();
+await adminPage.getByText(/Players to go for 1/).waitFor({ timeout: 5000 });
+check(true, "admin previews a team's owner view and builds a practice wishlist");
+await adminPage.screenshot({ path: `${SHOTS}/13-admin-owner-preview.png`, fullPage: true });
+const owner2After = (await (await wishlistOf(owner2)).json()).entries.length;
+check(owner2After === owner2Before, "the preview doesn't touch the team's real wishlist");
+await adminPage.getByRole("button", { name: "Exit preview" }).click();
+await adminPage.getByRole("heading", { name: "Preview the owner view" }).waitFor({ timeout: 5000 });
+check(true, "admin can leave the preview");
+
 for (const [path, marker] of [
   ["/admin/players", /Players \(\d+\)/],
   ["/admin/settings", "Men pool"],

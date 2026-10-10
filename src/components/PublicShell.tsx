@@ -8,7 +8,8 @@ import { InstallHint } from "./InstallHint";
 import { useLive } from "./live/LiveProvider";
 import { useMe } from "./MeProvider";
 import { OwnerBar } from "./owner/OwnerBar";
-import { WishlistProvider } from "./owner/WishlistProvider";
+import { PreviewBanner } from "./owner/PreviewBanner";
+import { useWishlist, WishlistProvider } from "./owner/WishlistProvider";
 import { SetupNotice } from "./SetupNotice";
 
 const TABS = [
@@ -23,16 +24,26 @@ const OWNER_TAB = { href: "/wishlist", label: "★ Wishlist" };
 
 /** Header, page tabs and (for owners) the wishlist bar, shared by every public page. */
 export function PublicShell({ children }: { children: React.ReactNode }) {
+  return (
+    <WishlistProvider>
+      <Shell>{children}</Shell>
+    </WishlistProvider>
+  );
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const { me } = useMe();
   const { state } = useLive();
-  const ownerTeam = me?.role === "owner" ? me.teamId : null;
+  const wishlist = useWishlist();
+  // Owners, or an admin previewing a team's owner view.
+  const ownerTeam = wishlist.enabled ? wishlist.teamId : null;
   const liveNow = state?.phase === "bidding" || state?.phase === "spinning" || state?.phase === "revealed";
 
-  const tabs = ownerTeam ? [...TABS.slice(0, 2), OWNER_TAB, ...TABS.slice(2)] : TABS;
+  const tabs = ownerTeam || me?.role === "admin" ? [...TABS.slice(0, 2), OWNER_TAB, ...TABS.slice(2)] : TABS;
 
   return (
-    <WishlistProvider>
+    <>
       <Header />
       <nav className="sticky top-[calc(env(safe-area-inset-top)+3.5rem)] z-20 border-b border-white/10 bg-slate-950/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-3 [scrollbar-width:none]">
@@ -54,10 +65,11 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
           })}
         </div>
       </nav>
+      <PreviewBanner />
       <SetupNotice />
       <InstallHint />
       <main className={cn("mx-auto max-w-6xl px-4 py-4 lg:py-6", ownerTeam ? "pb-36" : "pb-12")}>{children}</main>
       {ownerTeam && <OwnerBar teamId={ownerTeam} />}
-    </WishlistProvider>
+    </>
   );
 }
