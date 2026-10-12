@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/format";
 import { resizeImage } from "@/lib/image";
 import {
@@ -12,7 +12,9 @@ import {
   TSHIRT_SIZES,
   type PaymentOption,
   type RegistrationSettings,
+  upiPhoneDigits,
 } from "@/lib/registration";
+import { isIOS } from "@/lib/platform";
 import { PLAYER_ROLES } from "@/lib/types";
 import { Button, inputClass } from "../ui";
 
@@ -226,8 +228,9 @@ export function RegisterForm({ settings, payments }: { settings: RegistrationSet
               ))}
             </div>
             <p className="text-xs text-slate-400">
-              Paying from this phone? Tap <b>Copy</b> and paste the UPI ID in any UPI app (GPay, PhonePe, Paytm…), or take a
-              screenshot of the QR code and scan it from your app&apos;s gallery.
+              Paying from this phone? Tap <b>Download QR</b>, then in your UPI app (GPay, PhonePe, Paytm…) tap <i>Scan QR</i> and
+              pick the image from your gallery. Or tap <b>Copy</b> and pay to that{" "}
+              {payments.every((p) => p.phone) ? "number" : "number or UPI ID"}.
             </p>
           </>
         )}
@@ -286,17 +289,81 @@ export function RegisterForm({ settings, payments }: { settings: RegistrationSet
   );
 }
 
+/**
+ * The QR code as a PNG with the payee's name and number under it, so it can
+ * be saved to the phone and scanned from a UPI app's gallery.
+ */
+async function qrImageFile(payment: PaymentOption): Promise<File> {
+  const qr = new Image();
+  qr.src = payment.png;
+  await qr.decode();
+  const pad = 40;
+  const size = qr.naturalWidth;
+  const canvas = document.createElement("canvas");
+  canvas.width = size + pad * 2;
+  canvas.height = size + pad * 2 + 120;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(qr, pad, pad, size, size);
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#0f172a";
+  ctx.font = "bold 44px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+  ctx.fillText(payment.name || payment.upiId, canvas.width / 2, size + pad + 50, canvas.width - pad * 2);
+  ctx.fillStyle = "#334155";
+  ctx.font = "34px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+  ctx.fillText(payment.phone || payment.upiId, canvas.width / 2, size + pad + 100, canvas.width - pad * 2);
+  const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("no image"))), "image/png"));
+  const slug = (payment.name || payment.upiId).replace(/[^\w]+/g, "-").replace(/^-|-$/g, "") || "qr";
+  return new File([blob], `payment-qr-${slug}.png`, { type: "image/png" });
+}
+
 function PaymentCard({ payment }: { payment: PaymentOption }) {
   const [copied, setCopied] = useState(false);
+  // Built ahead of time so the iPhone share sheet opens straight from the tap.
+  const [file, setFile] = useState<File | null>(null);
+  useEffect(() => {
+    let active = true;
+    qrImageFile(payment)
+      .then((f) => active && setFile(f))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [payment]);
+
+  const shown = payment.phone || payment.upiId;
+  const copyText = payment.phone ? upiPhoneDigits(payment.phone) : payment.upiId;
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(payment.upiId);
+      await navigator.clipboard.writeText(copyText);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
-      window.prompt("Copy this UPI ID", payment.upiId);
+      window.prompt("Copy this", copyText);
     }
   };
+  const download = async () => {
+    const f = file ?? (await qrImageFile(payment));
+    // iPhones save downloads to Files, not Photos: the share sheet has "Save Image".
+    if (isIOS() && navigator.canShare?.({ files: [f] })) {
+      try {
+        await navigator.share({ files: [f] });
+        return;
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return;
+      }
+    }
+    const url = URL.createObjectURL(f);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = f.name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  };
+
   return (
     <div className="flex flex-col items-center rounded-xl bg-white p-3 text-slate-900">
       {payment.label && <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{payment.label}</p>}
@@ -308,18 +375,26 @@ function PaymentCard({ payment }: { payment: PaymentOption }) {
       />
       {payment.name && <p className="mt-1 text-center font-bold">{payment.name}</p>}
       <div className="mt-2 flex w-full items-center gap-2 rounded-lg bg-slate-100 py-1.5 pl-2.5 pr-1.5">
-        <span className="min-w-0 flex-1 truncate font-mono text-xs" title={payment.upiId}>
-          {payment.upiId}
+        <span className="min-w-0 flex-1 truncate font-mono text-sm" title={shown}>
+          {payment.phone && <span aria-hidden>📞 </span>}
+          {shown}
         </span>
         <button
           type="button"
           onClick={() => void copy()}
-          aria-label={`Copy UPI ID ${payment.upiId}`}
-          className="shrink-0 rounded-md bg-slate-900 px-2.5 py-1 text-xs font-bold text-white"
+          aria-label={`Copy ${payment.phone ? "phone number" : "UPI ID"} ${shown}`}
+          className="shrink-0 rounded-md bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-900"
         >
           {copied ? "Copied ✓" : "Copy"}
         </button>
       </div>
+      <button
+        type="button"
+        onClick={() => void download()}
+        className="mt-2 w-full rounded-lg bg-slate-900 py-2.5 text-sm font-bold text-white active:scale-[0.98]"
+      >
+        ⬇ Download QR
+      </button>
     </div>
   );
 }

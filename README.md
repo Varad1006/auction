@@ -183,9 +183,11 @@ photo, availability and notes on the player card. **CSV** exports everything (us
 orders).
 
 **Payment QR codes:** under *Payment QR codes*, upload a screenshot or photo of each UPI QR code
-(or type a UPI ID). The app reads the payment link inside it and the form shows a sharp copy of the
-QR code with the UPI ID and a **Copy** button, for people paying from the same phone. Only UPI
-payment links are accepted.
+(or type a UPI ID), and optionally the payee's phone number. The app reads the payment link inside
+it and the form shows a sharp copy of the QR code with a **Download QR** button (saves an image with
+the name and number; on iPhone it opens the share sheet so it can go straight to Photos) and the
+phone number, or the UPI ID if no number is set, with a **Copy** button. Only UPI payment links are
+accepted.
 
 **Start fresh:** after a mock auction, **Admin → Settings → Danger zone → Start fresh** deletes all
 players (with their photos, bids, results and wishlists) and/or all registrations (with their

@@ -2,6 +2,7 @@
 // Supabase (same setup as smoke.mjs). Screenshots go to $SHOTS.
 import { createServerClient } from "@supabase/ssr";
 import { mkdirSync, writeFileSync } from "node:fs";
+import jsQR from "jsqr";
 import { chromium, devices } from "playwright";
 import sharp from "sharp";
 
@@ -81,7 +82,8 @@ const files = { photo: [photo, "image/jpeg", "p.jpg"], receipt: [Buffer.from("%P
 console.log("Access and validation");
 check((await settings(false)).status === 200, "admin can save form settings");
 check((await act("registration.payments", { items: [{ label: "", payload: "https://evil.example/qr" }] })).status === 400, "only UPI payment links are accepted as QR codes");
-check((await act("registration.payments", { items: [{ label: "Fees", payload: UPI }] })).status === 200, "admin saves a payment QR code");
+check((await act("registration.payments", { items: [{ label: "Fees", payload: UPI, phone: "call me" }] })).status === 400, "payee phone must be a phone number");
+check((await act("registration.payments", { items: [{ label: "Fees", payload: UPI, phone: "98765 01234" }] })).status === 200, "admin saves a payment QR code with a phone number");
 check((await post(fields, files)).status === 403, "closed form rejects submissions");
 await settings(true);
 const fake = await post(fields, { ...files, photo: [Buffer.from("not an image"), "image/jpeg", "x.jpg"] });
@@ -115,7 +117,22 @@ await page.goto(`${APP}/register`);
 await page.getByRole("heading", { name: /Registration/ }).waitFor();
 check((await page.getByRole("link", { name: /Rule Book before registering/ }).getAttribute("href")) === "https://example.com/rulebook", "rulebook link and message are shown");
 check((await page.getByRole("img", { name: "UPI QR code for Test Payee" }).count()) === 1, "payment QR code is drawn on the form");
-check((await page.getByText("test.payee@okaxis").count()) === 1 && (await page.getByRole("button", { name: "Copy UPI ID test.payee@okaxis" }).count()) === 1, "UPI ID is shown with a Copy button");
+check(
+  (await page.getByText("98765 01234").count()) === 1 && (await page.getByText("test.payee@okaxis").count()) === 0,
+  "the payee's phone number is shown instead of the UPI ID",
+);
+await page.context().grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
+await page.getByRole("button", { name: "Copy phone number 98765 01234" }).click();
+const copiedText = await page.evaluate(() => navigator.clipboard.readText()).catch(() => null);
+check(copiedText === null || copiedText === "9876501234", `Copy puts the 10-digit number on the clipboard (${copiedText})`);
+const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "⬇ Download QR" }).click()]);
+const qrFile = `${SHOTS}/${download.suggestedFilename()}`;
+await download.saveAs(qrFile);
+const qrMeta = await sharp(qrFile).metadata();
+check(download.suggestedFilename() === "payment-qr-Test-Payee.png" && qrMeta.format === "png" && qrMeta.width >= 700, `Download QR saves a PNG (${download.suggestedFilename()}, ${qrMeta.width}x${qrMeta.height})`);
+const qrPixels = await sharp(qrFile).resize({ width: 400 }).removeAlpha().ensureAlpha(1).raw().toBuffer({ resolveWithObject: true });
+const scanned = jsQR(new Uint8ClampedArray(qrPixels.data), qrPixels.info.width, qrPixels.info.height)?.data;
+check(scanned === UPI, "the downloaded image scans as the same UPI payment link");
 const submitButton = page.getByRole("button", { name: "Submit registration" });
 check(await submitButton.isDisabled(), "submit is disabled until the declaration is accepted");
 await page.getByLabel("I have read and agree to the Undertaking and Declaration").check();

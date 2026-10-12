@@ -27,6 +27,15 @@ export interface PaymentQr {
   label: string;
   /** upi://pay?pa=<UPI ID>&pn=<name>&... exactly as encoded in the payee's QR code. */
   payload: string;
+  /** The payee's UPI phone number, shown instead of the UPI ID when set. */
+  phone?: string;
+}
+
+export const PAYEE_PHONE = /^\+?[\d\s-]{10,16}$/;
+
+/** A phone number as typed into a UPI app: the last 10 digits. */
+export function upiPhoneDigits(phone: string): string {
+  return phone.replace(/\D/g, "").slice(-10);
 }
 
 export const PAYMENT_QR_MAX = 4;
@@ -86,6 +95,8 @@ export interface PaymentOption extends PaymentQr {
   name: string;
   /** The QR code as an SVG drawn on the server. */
   svg: string;
+  /** The same QR code as a large PNG (data URL), for the downloadable image. */
+  png: string;
 }
 
 /**

@@ -382,8 +382,8 @@ function PaymentsEditor({ initial, onSaved }: { initial: PaymentQr[]; onSaved: (
       }
     >
       <p className="mb-3 text-sm text-slate-400">
-        Upload a screenshot or photo of a UPI QR code (GPay, PhonePe, Paytm…). The form shows a sharp copy of it, with the UPI ID and a
-        Copy button for people paying from the same phone.
+        Upload a screenshot or photo of a UPI QR code (GPay, PhonePe, Paytm…). The form shows a sharp copy of it with a Download
+        button, and the phone number you enter here (or the UPI ID if you leave it empty) with a Copy button.
       </p>
       {items.length > 0 && (
         <ul className="mb-4 space-y-2">
@@ -396,7 +396,17 @@ function PaymentsEditor({ initial, onSaved }: { initial: PaymentQr[]; onSaved: (
                   <span className="block font-mono text-xs text-slate-400">{upi?.upiId}</span>
                 </span>
                 <input
-                  className={cn(inputBase, "w-full py-1.5 text-sm sm:w-48")}
+                  className={cn(inputBase, "w-full py-1.5 text-sm sm:w-40")}
+                  type="tel"
+                  inputMode="tel"
+                  placeholder="Phone (shown on form)"
+                  aria-label={`Phone number for ${upi?.name || "this QR code"}`}
+                  maxLength={16}
+                  value={item.phone ?? ""}
+                  onChange={(e) => setItems((list) => list.map((x, i) => (i === idx ? { ...x, phone: e.target.value } : x)))}
+                />
+                <input
+                  className={cn(inputBase, "w-full py-1.5 text-sm sm:w-36")}
                   placeholder="Label (optional)"
                   maxLength={60}
                   value={item.label}

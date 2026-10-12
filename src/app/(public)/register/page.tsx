@@ -15,7 +15,8 @@ async function paymentOptions(settings: RegistrationSettings): Promise<PaymentOp
     const upi = parseUpi(q.payload);
     if (!upi) continue;
     const svg = await QRCode.toString(q.payload, { type: "svg", margin: 2, errorCorrectionLevel: "M" });
-    out.push({ ...q, ...upi, svg });
+    const png = await QRCode.toDataURL(q.payload, { width: 720, margin: 2, errorCorrectionLevel: "M" });
+    out.push({ ...q, ...upi, svg, png });
   }
   return out;
 }
