@@ -36,6 +36,7 @@ export interface PaymentQr {
 
 export const PAYMENT_QR_MAX = 4;
 export const DECLARATION_MAX = 6000;
+export const FINAL_DECLARATION_MAX = 2000;
 
 export interface RegistrationSettings {
   is_open: boolean;
@@ -46,6 +47,8 @@ export interface RegistrationSettings {
   availability_question: string;
   availability_options: string[];
   declaration_text: string;
+  /** A second agreement shown at the end of the form with its own box ("" = none). */
+  final_declaration_text: string;
   /** Link to the tournament rulebook, shown with `rulebook_message` at the top of the form. */
   rulebook_url: string | null;
   rulebook_message: string;
@@ -156,7 +159,9 @@ export const registrationFields = z.object({
   tshirt_size: z.enum(TSHIRT_SIZES as [string, ...string[]], { message: "Choose a T-shirt size" }),
   availability: z.string().trim().min(1, "Tell us your availability").max(300),
   additional_info: z.string().trim().max(500).optional().default(""),
-  declaration: z.literal("yes", { message: "Please accept the declaration" }),
+  declaration: z.literal("yes", { message: "Please accept the Undertaking and Declaration" }),
+  // Required by the server when a final agreement is set up.
+  final_declaration: z.string().optional().default(""),
 });
 
 export type RegistrationInput = z.infer<typeof registrationFields>;

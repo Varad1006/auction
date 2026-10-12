@@ -50,6 +50,7 @@ const settings = (is_open) =>
     availability_question: "Availability (Nov 2025) – 7:30 am till 1:00 pm",
     availability_options: ["Sat 8 Nov", "Sun 9 Nov", "Sat 15 Nov", "Sun 16 Nov"],
     declaration_text: "I confirm and undertake the following:\n\n1. I will follow the rules.\n2. I am fit to play.",
+    final_declaration_text: "10. I agree to follow the Rule Book and keep discipline.",
     rulebook_url: "https://example.com/rulebook",
     rulebook_message: "Please go through the Rule Book before registering.",
   });
@@ -75,7 +76,7 @@ const post = async (fields, files) => {
 const fields = {
   full_name: "Rohan Patil", email: `other.${Date.now()}@example.com`, phone: "9876543210", flat_number: "B-1203", age: "29",
   gender: "men", role: "All-rounder", batting_style: "Right-hand bat", bowling_style: "Right-arm medium", tshirt_size: "L",
-  availability: "Sat 8 Nov", declaration: "yes",
+  availability: "Sat 8 Nov", declaration: "yes", final_declaration: "yes",
 };
 const files = { photo: [photo, "image/jpeg", "p.jpg"], receipt: [Buffer.from("%PDF-1.4\n"), "application/pdf", "r.pdf"] };
 
@@ -92,6 +93,8 @@ const bad = await post({ ...fields, availability: "Every day" }, files);
 check(bad.status === 400, "availability must be one of the configured options");
 const noDecl = await post({ ...fields, declaration: "" }, files);
 check(noDecl.status === 400, "declaration is required");
+const noFinal = await post({ ...fields, final_declaration: "" }, files);
+check(noFinal.status === 400 && noFinal.body?.message === "Please agree to the rules and conduct", `the final agreement is required too (${noFinal.body?.message})`);
 const shortPhone = await post({ ...fields, phone: "98765 4321" }, files);
 check(shortPhone.status === 400 && shortPhone.body?.message === "Mobile number must be exactly 10 digits", `mobile numbers must be 10 digits (${shortPhone.body?.message})`);
 const conEmail = await post({ ...fields, email: "rohan@gmail.con" }, files);
@@ -156,8 +159,15 @@ const scanned = jsQR(new Uint8ClampedArray(qrPixels.data), qrPixels.info.width, 
 check(scanned === UPI, "the downloaded image scans as the same UPI payment link");
 const submitButton = page.getByRole("button", { name: "Submit registration" });
 check(await submitButton.isDisabled(), "submit is disabled until the declaration is accepted");
+const sections = await page.getByRole("heading", { level: 2 }).allTextContents();
+check(
+  sections[0] === "Undertaking and Declaration" && sections.at(-1) === "Rules and Conduct",
+  `the declaration comes first and the rules agreement last (${sections.join(" > ")})`,
+);
 await page.getByLabel("I have read and agree to the Undertaking and Declaration").check();
-check(await submitButton.isEnabled(), "accepting the declaration enables submit");
+check(await submitButton.isDisabled(), "one agreement isn't enough to submit");
+await page.getByLabel("I agree to follow the rules and conduct above").check();
+check(await submitButton.isEnabled(), "accepting both agreements enables submit");
 await submitButton.click();
 check((await page.getByText("Enter your full name").count()) === 1, "empty submit shows inline errors");
 await page.getByLabel("Full name").fill("Rohan Patil");

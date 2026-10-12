@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { callAction } from "@/lib/api";
 import { cn, timeAgo } from "@/lib/format";
 import { decodeQrImage } from "@/lib/qr-decode";
-import { DECLARATION_MAX, PAYMENT_QR_MAX, parseUpi, upiLink, type PaymentQr, type RegistrationSettings } from "@/lib/registration";
+import { DECLARATION_MAX, FINAL_DECLARATION_MAX, PAYMENT_QR_MAX, parseUpi, upiLink, type PaymentQr, type RegistrationSettings } from "@/lib/registration";
 import { POOL_LABEL, type Pool } from "@/lib/types";
 import { Button, Card, Field, inputBase, inputClass, useRunner } from "../ui";
 
@@ -247,6 +247,7 @@ function FormSettings({ settings, onSaved }: { settings: RegistrationSettings; o
           availability_question: next.availability_question,
           availability_options: next.options.split("\n").map((s) => s.trim()).filter(Boolean),
           declaration_text: next.declaration_text,
+          final_declaration_text: next.final_declaration_text,
           rulebook_url: next.rulebook_url,
           rulebook_message: next.rulebook_message,
         }),
@@ -319,9 +320,9 @@ function FormSettings({ settings, onSaved }: { settings: RegistrationSettings; o
             <textarea className={inputClass} rows={4} maxLength={1000} value={f.payment_instructions} onChange={(e) => set("payment_instructions", e.target.value)} />
           </Field>
           <Field
-            label="Undertaking and declaration"
+            label="Undertaking and declaration (top of the form)"
             className="sm:col-span-2"
-            hint="Players must tick “I have read and agree” before they can submit."
+            hint="Shown first, with its own “I agree” box. Players must tick it before they can submit."
           >
             <textarea
               className={inputClass}
@@ -329,6 +330,19 @@ function FormSettings({ settings, onSaved }: { settings: RegistrationSettings; o
               maxLength={DECLARATION_MAX}
               value={f.declaration_text}
               onChange={(e) => set("declaration_text", e.target.value)}
+            />
+          </Field>
+          <Field
+            label="Final agreement (end of the form)"
+            className="sm:col-span-2"
+            hint="Optional. Shown just above Submit with a separate “I agree” box, e.g. the rule book and conduct clause."
+          >
+            <textarea
+              className={inputClass}
+              rows={4}
+              maxLength={FINAL_DECLARATION_MAX}
+              value={f.final_declaration_text}
+              onChange={(e) => set("final_declaration_text", e.target.value)}
             />
           </Field>
           <label className="flex items-center gap-2 text-sm sm:col-span-2">

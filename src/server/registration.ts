@@ -14,6 +14,7 @@ export const DEFAULT_SETTINGS: RegistrationSettings = {
   availability_question: "Availability",
   availability_options: [],
   declaration_text: "I confirm the details above are correct and I will follow the tournament rules.",
+  final_declaration_text: "",
   rulebook_url: null,
   rulebook_message: "Please read the rulebook before registering.",
   payment_qr: [],

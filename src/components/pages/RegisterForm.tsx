@@ -81,6 +81,9 @@ export function RegisterForm({ settings, payments }: { settings: RegistrationSet
     if (errors[k]) setErrors((e) => ({ ...e, [k]: "" }));
   };
   const useOptions = settings.availability_options.length > 0;
+  // A second agreement at the end of the form, with its own box.
+  const hasFinal = settings.final_declaration_text.trim() !== "";
+  const agreed = values.declaration === "yes" && (!hasFinal || values.final_declaration === "yes");
   const emailSuggestion = keptEmail === values.email ? null : suggestEmail(values.email ?? "");
   const availabilityValue = useOptions ? availability.join(", ") : (values.availability ?? "");
 
@@ -120,6 +123,7 @@ export function RegisterForm({ settings, payments }: { settings: RegistrationSet
     const parsed = registrationFields.safeParse(all);
     const errs: Errors = {};
     if (!parsed.success) for (const i of parsed.error.issues) errs[String(i.path[0])] ??= i.message;
+    if (hasFinal && values.final_declaration !== "yes") errs.final_declaration = "Please agree to the rules and conduct";
     if (!photo) errs.photo = "Please upload your photo";
     else if (photo.size > PHOTO_MAX_BYTES) errs.photo = "Photo is too large";
     if (settings.receipt_required && !receipt) errs.receipt = "Please upload your payment receipt";
@@ -176,6 +180,17 @@ export function RegisterForm({ settings, payments }: { settings: RegistrationSet
 
         {/* Honeypot for bots; hidden from people and screen readers. */}
         <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden className="absolute -left-[9999px] h-0 w-0 opacity-0" />
+
+        <Agreement
+          title="Undertaking and Declaration"
+          text={settings.declaration_text}
+          rulebookUrl={hasFinal ? null : settings.rulebook_url}
+          label="I have read and agree to the Undertaking and Declaration"
+          name="declaration"
+          values={values}
+          errors={errors}
+          set={set}
+        />
 
         <Section title="About you" note="Only the organisers see your contact details and flat number.">
           <Input
@@ -357,46 +372,33 @@ export function RegisterForm({ settings, payments }: { settings: RegistrationSet
           </div>
         </Section>
 
-        <Section title="Undertaking and Declaration">
-          <div
-            tabIndex={0}
-            aria-label="Undertaking and Declaration"
-            className="max-h-80 overflow-y-auto whitespace-pre-line rounded-xl bg-slate-950 p-3 text-sm leading-relaxed text-slate-300 ring-1 ring-white/10"
-          >
-            {settings.declaration_text}
-          </div>
-          {settings.rulebook_url && (
-            <p className="text-sm text-slate-400">
-              Rule Book:{" "}
-              <a href={settings.rulebook_url} target="_blank" rel="noopener noreferrer" className="font-semibold text-amber-300 underline">
-                open it here ↗
-              </a>
-            </p>
-          )}
-          <label
-            data-error={!!errors.declaration}
-            className={cn(
-              "flex items-start gap-3 rounded-xl p-3 ring-1",
-              values.declaration === "yes" ? "bg-emerald-500/10 ring-emerald-500/40" : "bg-slate-950 ring-white/15",
-            )}
-          >
-            <input
-              type="checkbox"
-              className="mt-0.5 h-5 w-5 shrink-0 accent-amber-400"
-              checked={values.declaration === "yes"}
-              onChange={(e) => set("declaration", e.target.checked ? "yes" : "")}
-            />
-            <span className="text-sm font-semibold">I have read and agree to the Undertaking and Declaration</span>
-          </label>
-          <FieldError msg={errors.declaration} />
-        </Section>
+        {hasFinal && (
+          <Agreement
+            title="Rules and Conduct"
+            text={settings.final_declaration_text}
+            rulebookUrl={settings.rulebook_url}
+            label="I agree to follow the rules and conduct above"
+            name="final_declaration"
+            values={values}
+            errors={errors}
+            set={set}
+          />
+        )}
 
         {serverError && <p role="alert" className="rounded-xl bg-rose-950 p-3 text-sm text-rose-200">{serverError}</p>}
-        <Button type="submit" variant="primary" size="lg" className="w-full" busy={submitting} disabled={values.declaration !== "yes"}>
+        <Button type="submit" variant="primary" size="lg" className="w-full" busy={submitting} disabled={!agreed}>
           {submitting ? "Submitting…" : "Submit registration"}
         </Button>
-        {values.declaration !== "yes" && (
-          <p className="-mt-2 text-center text-xs text-slate-500">Tick &ldquo;I have read and agree&rdquo; above to submit.</p>
+        {!agreed && (
+          <p className="-mt-2 text-center text-xs text-slate-500">
+            {!hasFinal
+              ? "Tick “I have read and agree” above to submit."
+              : values.declaration !== "yes" && values.final_declaration !== "yes"
+                ? "Tick both “I agree” boxes (at the top of the form and just above) to submit."
+                : values.declaration !== "yes"
+                  ? "Tick “I have read and agree” at the top of the form to submit."
+                  : "Tick “I agree” just above to submit."}
+          </p>
         )}
       </form>
     </FormFrame>
@@ -465,6 +467,65 @@ async function qrImageFile(payment: PaymentOption): Promise<File> {
   const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("no image"))), "image/png"));
   const slug = (payment.name || payment.upiId).replace(/[^\w]+/g, "-").replace(/^-|-$/g, "") || "qr";
   return new File([blob], `payment-qr-${slug}.png`, { type: "image/png" });
+}
+
+/** A block of terms in a scroll box with its own "I agree" tick box. */
+function Agreement({
+  title,
+  text,
+  rulebookUrl,
+  label,
+  name,
+  values,
+  errors,
+  set,
+}: {
+  title: string;
+  text: string;
+  rulebookUrl: string | null;
+  label: string;
+  name: "declaration" | "final_declaration";
+  values: Record<string, string>;
+  errors: Errors;
+  set: (k: string, v: string) => void;
+}) {
+  const checked = values[name] === "yes";
+  return (
+    <Section title={title}>
+      <div
+        tabIndex={0}
+        aria-label={title}
+        className="max-h-80 overflow-y-auto whitespace-pre-line rounded-xl bg-slate-950 p-3 text-sm leading-relaxed text-slate-300 ring-1 ring-white/10"
+      >
+        {text}
+      </div>
+      {rulebookUrl && (
+        <p className="text-sm text-slate-400">
+          Rule Book:{" "}
+          <a href={rulebookUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-amber-300 underline">
+            open it here ↗
+          </a>
+        </p>
+      )}
+      <label
+        data-error={!!errors[name]}
+        className={cn(
+          "flex items-start gap-3 rounded-xl p-3 ring-1",
+          checked ? "bg-emerald-500/10 ring-emerald-500/40" : "bg-slate-950 ring-white/15",
+          errors[name] && !checked && "ring-2 ring-rose-500",
+        )}
+      >
+        <input
+          type="checkbox"
+          className="mt-0.5 h-5 w-5 shrink-0 accent-amber-400"
+          checked={checked}
+          onChange={(e) => set(name, e.target.checked ? "yes" : "")}
+        />
+        <span className="text-sm font-semibold">{label}</span>
+      </label>
+      <FieldError msg={errors[name]} />
+    </Section>
+  );
 }
 
 function PaymentCard({ payment }: { payment: PaymentOption }) {

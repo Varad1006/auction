@@ -7,7 +7,7 @@ import { parsePlayerImport } from "@/lib/import";
 import { photoUrlFrom } from "@/lib/photos";
 import { basePriceFor } from "@/lib/rules";
 import { GRADES, PLAYER_ROLES, POOLS, type AuctionState, type Me, type PoolConfig, type Role } from "@/lib/types";
-import { DECLARATION_MAX, mobileNumber, PAYMENT_QR_MAX, parseUpi } from "@/lib/registration";
+import { DECLARATION_MAX, FINAL_DECLARATION_MAX, mobileNumber, PAYMENT_QR_MAX, parseUpi } from "@/lib/registration";
 import { WISHLIST_MAX } from "@/lib/wishlist";
 import { isPushEndpoint, notifyWishlist, sendTestPush } from "./push";
 import { REG_BUCKET } from "./registration";
@@ -529,6 +529,7 @@ export const actions = {
       availability_question: z.string().trim().min(1).max(150),
       availability_options: z.array(z.string().trim().min(1).max(60)).max(20),
       declaration_text: z.string().trim().min(1).max(DECLARATION_MAX),
+      final_declaration_text: z.string().trim().max(FINAL_DECLARATION_MAX).optional(),
       rulebook_url: z
         .string()
         .trim()

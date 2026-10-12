@@ -27,6 +27,9 @@ export async function POST(req: NextRequest) {
     return jsonError(400, "invalid_input", issue?.message ?? "Please check the form");
   }
   const input = parsed.data;
+  if (settings.final_declaration_text.trim() && input.final_declaration !== "yes") {
+    return jsonError(400, "invalid_input", "Please agree to the rules and conduct");
+  }
   if (settings.availability_options.length > 0) {
     const chosen = input.availability.split(",").map((s) => s.trim());
     if (chosen.some((c) => !settings.availability_options.includes(c))) {
@@ -79,8 +82,9 @@ export async function POST(req: NextRequest) {
     return jsonError(500, "upload_failed", "Upload failed, please try again");
   }
 
-  const { declaration: _declaration, ...row } = input;
+  const { declaration: _declaration, final_declaration: _final, ...row } = input;
   void _declaration;
+  void _final;
   const { error } = await db.from("registrations").insert({
     ...row,
     additional_info: row.additional_info || null,

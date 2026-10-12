@@ -104,7 +104,7 @@ enough for this event (see [Limits](#limits)).
    `xltgjnmeccyzncstgtlv`).
 2. **Create the database schema**, using one of these:
    - **SQL Editor** (simplest): open **SQL Editor → New query**, then paste
-     and **Run** each file in `supabase/migrations/`, in filename order (9
+     and **Run** each file in `supabase/migrations/`, in filename order (10
      files).
    - **Script over HTTPS:** create a personal access token (avatar →
      **Account preferences → Access Tokens**), then run
@@ -176,8 +176,9 @@ gender, playing role, batting/bowling style, T-shirt size, availability, a photo
 receipt. Submissions are private (only admins see contact details, flats and receipts).
 
 On **Admin → Registrations**: open/close the form, set the intro, a rulebook link and message,
-payment instructions, availability options (e.g. match dates) and the undertaking & declaration
-(players must tick "I have read and agree" before they can submit); review each registration
+payment instructions, availability options (e.g. match dates), the undertaking & declaration
+(shown first) and an optional final agreement (shown just above Submit), each with its own
+"I agree" box that players must tick before they can submit; review each registration
 (photo and receipt links), pick a grade and **Approve** to add them to the auction pool with their
 photo, availability and notes on the player card. **CSV** exports everything (useful for T-shirt
 orders).
