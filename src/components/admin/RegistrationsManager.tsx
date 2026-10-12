@@ -399,7 +399,7 @@ function PaymentsEditor({ initial, onSaved }: { initial: PaymentQr[]; onSaved: (
                   className={cn(inputBase, "w-full py-1.5 text-sm sm:w-40")}
                   type="tel"
                   inputMode="tel"
-                  placeholder="Phone (shown on form)"
+                  placeholder="10-digit mobile (shown)"
                   aria-label={`Phone number for ${upi?.name || "this QR code"}`}
                   maxLength={16}
                   value={item.phone ?? ""}

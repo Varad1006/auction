@@ -52,6 +52,17 @@ export async function POST(req: NextRequest) {
 
   const { data: existing } = await db.from("registrations").select("id").eq("email", input.email).maybeSingle();
   if (existing) return jsonError(409, "duplicate", "This email has already registered. Contact the organisers to make changes.");
+  // The same person again under another email (names only contain letters,
+  // spaces and . ' - so they're safe in a LIKE pattern).
+  const { data: samePerson } = await db
+    .from("registrations")
+    .select("id")
+    .eq("phone", input.phone)
+    .ilike("full_name", input.full_name)
+    .limit(1);
+  if (samePerson?.length) {
+    return jsonError(409, "duplicate", `${input.full_name} has already registered with this mobile number. Contact the organisers to make changes.`);
+  }
 
   const folder = crypto.randomUUID();
   const photoPath = `${folder}/photo.${EXT[photoType]}`;

@@ -13,7 +13,9 @@ import {
   TSHIRT_SIZES,
   type PaymentOption,
   type RegistrationSettings,
-  upiPhoneDigits,
+  formatMobile,
+  normalizeMobile,
+  typingMobile,
 } from "@/lib/registration";
 import { isIOS } from "@/lib/platform";
 import { PLAYER_ROLES } from "@/lib/types";
@@ -162,12 +164,66 @@ export function RegisterForm({ settings, payments }: { settings: RegistrationSet
         <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden className="absolute -left-[9999px] h-0 w-0 opacity-0" />
 
         <Section title="About you" note="Only the organisers see your contact details and flat number.">
-          <Input label="Full name" name="full_name" autoComplete="name" values={values} errors={errors} set={set} />
-          <Input label="Email" name="email" type="email" autoComplete="email" values={values} errors={errors} set={set} />
-          <Input label="Contact number" name="phone" type="tel" autoComplete="tel" values={values} errors={errors} set={set} />
+          <Input
+            label="Full name"
+            name="full_name"
+            autoComplete="name"
+            autoCapitalize="words"
+            maxLength={80}
+            values={values}
+            errors={errors}
+            set={set}
+          />
+          <Input
+            label="Email"
+            name="email"
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            autoCapitalize="none"
+            spellCheck={false}
+            maxLength={120}
+            values={values}
+            errors={errors}
+            set={set}
+          />
+          <Input
+            label="Mobile number"
+            name="phone"
+            type="tel"
+            inputMode="numeric"
+            autoComplete="tel-national"
+            placeholder="10-digit mobile number"
+            lead="+91"
+            hint={values.phone && values.phone.length < 10 ? `${values.phone.length}/10 digits` : undefined}
+            clean={typingMobile}
+            values={values}
+            errors={errors}
+            set={set}
+          />
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Flat number" name="flat_number" placeholder="e.g. B-1203" values={values} errors={errors} set={set} />
-            <Input label="Age" name="age" type="number" inputMode="numeric" values={values} errors={errors} set={set} />
+            <Input
+              label="Flat number"
+              name="flat_number"
+              placeholder="e.g. B-1203"
+              autoCapitalize="characters"
+              maxLength={30}
+              clean={(v) => v.toUpperCase()}
+              values={values}
+              errors={errors}
+              set={set}
+            />
+            <Input
+              label="Age"
+              name="age"
+              type="text"
+              inputMode="numeric"
+              placeholder="Years"
+              clean={(v) => v.replace(/\D/g, "").slice(0, 3)}
+              values={values}
+              errors={errors}
+              set={set}
+            />
           </div>
           <Choice label="Gender" name="gender" options={[["men", "Male"], ["women", "Female"]]} values={values} errors={errors} set={set} />
         </Section>
@@ -211,6 +267,7 @@ export function RegisterForm({ settings, payments }: { settings: RegistrationSet
               value={values.additional_info ?? ""}
               onChange={(e) => set("additional_info", e.target.value)}
             />
+            <span className="mt-1 block text-right text-xs text-slate-500">{(values.additional_info ?? "").length}/500</span>
           </label>
         </Section>
 
@@ -377,8 +434,8 @@ function PaymentCard({ payment }: { payment: PaymentOption }) {
     };
   }, [payment]);
 
-  const shown = payment.phone || payment.upiId;
-  const copyText = payment.phone ? upiPhoneDigits(payment.phone) : payment.upiId;
+  const shown = payment.phone ? formatMobile(normalizeMobile(payment.phone)) : payment.upiId;
+  const copyText = payment.phone ? normalizeMobile(payment.phone) : payment.upiId;
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(copyText);
@@ -465,18 +522,46 @@ interface FieldProps {
   set: (k: string, v: string) => void;
 }
 
-function Input({ label, name, values, errors, set, ...rest }: FieldProps & React.InputHTMLAttributes<HTMLInputElement>) {
+function Input({
+  label,
+  name,
+  values,
+  errors,
+  set,
+  clean,
+  lead,
+  hint,
+  ...rest
+}: FieldProps &
+  React.InputHTMLAttributes<HTMLInputElement> & {
+    /** Tidies the value as it is typed (e.g. digits only). */
+    clean?: (v: string) => string;
+    /** Fixed text shown before the box, e.g. "+91". */
+    lead?: string;
+    hint?: string;
+  }) {
+  const input = (
+    <input
+      {...rest}
+      name={name}
+      aria-invalid={!!errors[name]}
+      className={cn(inputClass, lead && "rounded-l-none", errors[name] && "ring-2! ring-rose-500!")}
+      value={values[name] ?? ""}
+      onChange={(e) => set(name, clean ? clean(e.target.value) : e.target.value)}
+    />
+  );
   return (
     <label className="block text-sm" data-error={!!errors[name]}>
       <span className="mb-1 block font-medium text-slate-300">{label}</span>
-      <input
-        {...rest}
-        name={name}
-        aria-invalid={!!errors[name]}
-        className={cn(inputClass, errors[name] && "ring-2 ring-rose-500")}
-        value={values[name] ?? ""}
-        onChange={(e) => set(name, e.target.value)}
-      />
+      {lead ? (
+        <span className="flex">
+          <span className="flex items-center rounded-l-lg bg-slate-800 px-3 font-semibold text-slate-300 ring-1 ring-white/15">{lead}</span>
+          {input}
+        </span>
+      ) : (
+        input
+      )}
+      {hint && !errors[name] && <span className="mt-1 block text-xs text-slate-500">{hint}</span>}
       <FieldError msg={errors[name]} />
     </label>
   );
@@ -489,7 +574,7 @@ function Select({ label, name, options, values, errors, set }: FieldProps & { op
       <select
         name={name}
         aria-invalid={!!errors[name]}
-        className={cn(inputClass, errors[name] && "ring-2 ring-rose-500")}
+        className={cn(inputClass, errors[name] && "ring-2! ring-rose-500!")}
         value={values[name] ?? ""}
         onChange={(e) => set(name, e.target.value)}
       >

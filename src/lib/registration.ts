@@ -31,12 +31,7 @@ export interface PaymentQr {
   phone?: string;
 }
 
-export const PAYEE_PHONE = /^\+?[\d\s-]{10,16}$/;
 
-/** A phone number as typed into a UPI app: the last 10 digits. */
-export function upiPhoneDigits(phone: string): string {
-  return phone.replace(/\D/g, "").slice(-10);
-}
 
 export const PAYMENT_QR_MAX = 4;
 export const DECLARATION_MAX = 6000;
@@ -57,15 +52,67 @@ export interface RegistrationSettings {
   payment_qr: PaymentQr[];
 }
 
+/**
+ * The 10-digit Indian mobile number from what was typed or pasted: spaces
+ * and dashes dropped, and a +91 / 91 / 0 prefix removed.
+ */
+export function normalizeMobile(raw: string): string {
+  const d = raw.replace(/\D/g, "");
+  if (raw.trim().startsWith("+91") || (d.length === 12 && d.startsWith("91"))) return d.slice(2);
+  if (d.length === 11 && d.startsWith("0")) return d.slice(1);
+  return d;
+}
+
+/** As the mobile number field is typed in: digits only, at most 10. */
+export function typingMobile(raw: string): string {
+  return normalizeMobile(raw).slice(0, 10);
+}
+
+/** 98765 43210 */
+export function formatMobile(digits: string): string {
+  return /^\d{10}$/.test(digits) ? `${digits.slice(0, 5)} ${digits.slice(5)}` : digits;
+}
+
+export const mobileNumber = z
+  .string()
+  .transform(normalizeMobile)
+  .pipe(
+    z
+      .string()
+      .min(1, "Enter your mobile number")
+      .length(10, "Mobile number must be exactly 10 digits")
+      .regex(/^[6-9]/, "Mobile numbers start with 6, 7, 8 or 9"),
+  );
+
 export const registrationFields = z.object({
-  full_name: z.string().trim().min(2, "Enter your full name").max(80),
+  full_name: z
+    .string()
+    .transform((v) => v.trim().replace(/\s+/g, " "))
+    .pipe(
+      z
+        .string()
+        .min(2, "Enter your full name")
+        .max(80, "Name is too long")
+        .regex(/^[\p{L}\p{M}][\p{L}\p{M} .'-]*$/u, "Use letters only in your name"),
+    ),
   email: z.string().trim().toLowerCase().pipe(z.email("Enter a valid email")),
-  phone: z
+  phone: mobileNumber,
+  flat_number: z
+    .string()
+    .transform((v) => v.trim().toUpperCase().replace(/\s+/g, " "))
+    .pipe(
+      z
+        .string()
+        .min(1, "Enter your flat number")
+        .max(30, "Flat number is too long")
+        .regex(/^[A-Z0-9][A-Z0-9 /-]*$/, "Use letters, numbers, - or / (e.g. B-1203)"),
+    ),
+  age: z
     .string()
     .trim()
-    .regex(/^[+\d][\d\s-]{5,19}$/, "Enter a valid phone number"),
-  flat_number: z.string().trim().min(1, "Enter your flat number").max(30),
-  age: z.coerce.number().int().min(5, "Enter a valid age").max(100, "Enter a valid age"),
+    .regex(/^\d{1,3}$/, "Enter your age in years")
+    .transform(Number)
+    .pipe(z.number().min(5, "Enter a valid age").max(100, "Enter a valid age")),
   gender: z.enum(["men", "women"], { message: "Choose Male or Female" }),
   role: z.enum(PLAYER_ROLES, { message: "Choose your playing role" }),
   batting_style: z.enum(BATTING_STYLES as [string, ...string[]], { message: "Choose your batting style" }),

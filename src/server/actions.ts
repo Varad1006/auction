@@ -7,7 +7,7 @@ import { parsePlayerImport } from "@/lib/import";
 import { photoUrlFrom } from "@/lib/photos";
 import { basePriceFor } from "@/lib/rules";
 import { GRADES, PLAYER_ROLES, POOLS, type AuctionState, type Me, type PoolConfig, type Role } from "@/lib/types";
-import { DECLARATION_MAX, PAYEE_PHONE, PAYMENT_QR_MAX, parseUpi } from "@/lib/registration";
+import { DECLARATION_MAX, mobileNumber, PAYMENT_QR_MAX, parseUpi } from "@/lib/registration";
 import { WISHLIST_MAX } from "@/lib/wishlist";
 import { isPushEndpoint, notifyWishlist, sendTestPush } from "./push";
 import { REG_BUCKET } from "./registration";
@@ -497,12 +497,17 @@ export const actions = {
               .trim()
               .max(500)
               .refine((v) => parseUpi(v) !== null, "Not a UPI payment QR code"),
+            // Optional; stored as the plain 10-digit mobile number.
             phone: z
               .string()
-              .trim()
-              .refine((v) => v === "" || PAYEE_PHONE.test(v), "Enter a valid phone number")
-              .transform((v) => v || undefined)
-              .optional(),
+              .optional()
+              .transform((v, ctx) => {
+                if (!v?.trim()) return undefined;
+                const r = mobileNumber.safeParse(v);
+                if (r.success) return r.data;
+                ctx.addIssue({ code: "custom", message: `Payee phone: ${r.error.issues[0]?.message ?? "invalid"}` });
+                return z.NEVER;
+              }),
           }),
         )
         .max(PAYMENT_QR_MAX),
