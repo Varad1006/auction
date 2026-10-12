@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { callAction } from "@/lib/api";
 import { cn, timeAgo } from "@/lib/format";
-import type { RegistrationSettings } from "@/lib/registration";
+import { decodeQrImage } from "@/lib/qr-decode";
+import { DECLARATION_MAX, PAYMENT_QR_MAX, parseUpi, upiLink, type PaymentQr, type RegistrationSettings } from "@/lib/registration";
 import { POOL_LABEL, type Pool } from "@/lib/types";
-import { Button, Card, Field, inputClass, useRunner } from "../ui";
+import { Button, Card, Field, inputBase, inputClass, useRunner } from "../ui";
 
 interface Registration {
   id: string;
@@ -73,6 +74,7 @@ export function RegistrationsManager() {
   return (
     <div className="space-y-4">
       <FormSettings key={JSON.stringify(data.settings)} settings={data.settings} onSaved={load} />
+      <PaymentsEditor key={`pay-${JSON.stringify(data.settings.payment_qr)}`} initial={data.settings.payment_qr} onSaved={load} />
 
       <Card
         title="Registrations"
@@ -223,7 +225,11 @@ function RegistrationRow({
 function FormSettings({ settings, onSaved }: { settings: RegistrationSettings; onSaved: () => void }) {
   const { busy, run } = useRunner();
   const [open, setOpen] = useState(!settings.is_open);
-  const [f, setF] = useState({ ...settings, options: settings.availability_options.join("\n") });
+  const [f, setF] = useState({
+    ...settings,
+    options: settings.availability_options.join("\n"),
+    rulebook_url: settings.rulebook_url ?? "",
+  });
   const link = typeof window === "undefined" ? "/register" : `${window.location.origin}/register`;
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((s) => ({ ...s, [k]: v }));
 
@@ -241,6 +247,8 @@ function FormSettings({ settings, onSaved }: { settings: RegistrationSettings; o
           availability_question: next.availability_question,
           availability_options: next.options.split("\n").map((s) => s.trim()).filter(Boolean),
           declaration_text: next.declaration_text,
+          rulebook_url: next.rulebook_url,
+          rulebook_message: next.rulebook_message,
         }),
       next.is_open ? "Registration form is open" : "Registration form saved (closed)",
     );
@@ -288,6 +296,19 @@ function FormSettings({ settings, onSaved }: { settings: RegistrationSettings; o
           <Field label="Introduction" className="sm:col-span-2" hint="Shown at the top: dates, venue, format, fees…">
             <textarea className={inputClass} rows={3} maxLength={2000} value={f.intro} onChange={(e) => set("intro", e.target.value)} />
           </Field>
+          <Field label="Rulebook link" hint="Shown at the top of the form, e.g. a Google Doc shared as “anyone with the link”.">
+            <input
+              className={inputClass}
+              type="url"
+              maxLength={500}
+              placeholder="https://docs.google.com/…"
+              value={f.rulebook_url}
+              onChange={(e) => set("rulebook_url", e.target.value)}
+            />
+          </Field>
+          <Field label="Rulebook message">
+            <input className={inputClass} maxLength={300} value={f.rulebook_message} onChange={(e) => set("rulebook_message", e.target.value)} />
+          </Field>
           <Field label="Availability question" className="sm:col-span-2">
             <input className={inputClass} maxLength={150} value={f.availability_question} onChange={(e) => set("availability_question", e.target.value)} />
           </Field>
@@ -297,8 +318,18 @@ function FormSettings({ settings, onSaved }: { settings: RegistrationSettings; o
           <Field label="Payment instructions" hint="e.g. UPI ID and amount.">
             <textarea className={inputClass} rows={4} maxLength={1000} value={f.payment_instructions} onChange={(e) => set("payment_instructions", e.target.value)} />
           </Field>
-          <Field label="Undertaking and declaration" className="sm:col-span-2">
-            <textarea className={inputClass} rows={3} maxLength={2000} value={f.declaration_text} onChange={(e) => set("declaration_text", e.target.value)} />
+          <Field
+            label="Undertaking and declaration"
+            className="sm:col-span-2"
+            hint="Players must tick “I have read and agree” before they can submit."
+          >
+            <textarea
+              className={inputClass}
+              rows={10}
+              maxLength={DECLARATION_MAX}
+              value={f.declaration_text}
+              onChange={(e) => set("declaration_text", e.target.value)}
+            />
           </Field>
           <label className="flex items-center gap-2 text-sm sm:col-span-2">
             <input type="checkbox" className="h-4 w-4 accent-amber-400" checked={f.receipt_required} onChange={(e) => set("receipt_required", e.target.checked)} />
@@ -311,6 +342,111 @@ function FormSettings({ settings, onSaved }: { settings: RegistrationSettings; o
           </div>
         </form>
       )}
+    </Card>
+  );
+}
+
+/** Payment QR codes shown on the form, stored as UPI payment links. */
+function PaymentsEditor({ initial, onSaved }: { initial: PaymentQr[]; onSaved: () => void }) {
+  const { busy, run } = useRunner();
+  const [items, setItems] = useState<PaymentQr[]>(initial);
+  const [upiId, setUpiId] = useState("");
+  const [name, setName] = useState("");
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const dirty = JSON.stringify(items) !== JSON.stringify(initial);
+  const full = items.length >= PAYMENT_QR_MAX;
+
+  const addPayload = (payload: string) => {
+    const upi = parseUpi(payload);
+    if (!upi) return setNote({ ok: false, text: "That isn't a UPI payment QR code." });
+    if (items.some((i) => parseUpi(i.payload)?.upiId === upi.upiId)) return setNote({ ok: false, text: `${upi.upiId} is already added.` });
+    setItems((list) => [...list, { label: "", payload }]);
+    setNote({ ok: true, text: `Added ${upi.name || upi.upiId} (${upi.upiId}). Press Save to put it on the form.` });
+  };
+
+  return (
+    <Card
+      title="Payment QR codes"
+      actions={
+        <Button
+          size="sm"
+          variant="primary"
+          disabled={!dirty}
+          busy={busy === "pay"}
+          onClick={async () => {
+            if (await run("pay", () => callAction("registration.payments", { items }), "Payment QR codes saved")) onSaved();
+          }}
+        >
+          Save
+        </Button>
+      }
+    >
+      <p className="mb-3 text-sm text-slate-400">
+        Upload a screenshot or photo of a UPI QR code (GPay, PhonePe, Paytm…). The form shows a sharp copy of it, with the UPI ID and a
+        Copy button for people paying from the same phone.
+      </p>
+      {items.length > 0 && (
+        <ul className="mb-4 space-y-2">
+          {items.map((item, idx) => {
+            const upi = parseUpi(item.payload);
+            return (
+              <li key={item.payload} className="flex flex-wrap items-center gap-2 rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/10">
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold">{upi?.name || "UPI"}</span>
+                  <span className="block font-mono text-xs text-slate-400">{upi?.upiId}</span>
+                </span>
+                <input
+                  className={cn(inputBase, "w-full py-1.5 text-sm sm:w-48")}
+                  placeholder="Label (optional)"
+                  maxLength={60}
+                  value={item.label}
+                  onChange={(e) => setItems((list) => list.map((x, i) => (i === idx ? { ...x, label: e.target.value } : x)))}
+                />
+                <Button size="sm" variant="ghost" className="text-rose-300" onClick={() => setItems((list) => list.filter((_, i) => i !== idx))}>
+                  Remove
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {full ? (
+        <p className="text-sm text-slate-500">Up to {PAYMENT_QR_MAX} QR codes. Remove one to add another.</p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-[auto_1fr] sm:items-end">
+          <label className="inline-flex cursor-pointer items-center justify-center rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold hover:bg-white/15">
+            Upload QR image
+            <input
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file) return;
+                const text = await decodeQrImage(file).catch(() => null);
+                if (text) addPayload(text);
+                else setNote({ ok: false, text: "Couldn't read a QR code in that image. Try a clearer screenshot, or type the UPI ID." });
+              }}
+            />
+          </label>
+          <form
+            className="flex flex-wrap gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!upiId.trim()) return;
+              addPayload(upiLink(upiId, name));
+              setUpiId("");
+              setName("");
+            }}
+          >
+            <input className={cn(inputBase, "min-w-0 flex-1 basis-40")} placeholder="or type a UPI ID" value={upiId} onChange={(e) => setUpiId(e.target.value)} />
+            <input className={cn(inputBase, "min-w-0 flex-1 basis-32")} placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
+            <Button type="submit">Add</Button>
+          </form>
+        </div>
+      )}
+      {note && <p className={cn("mt-3 text-sm", note.ok ? "text-emerald-300" : "text-rose-300")}>{note.text}</p>}
     </Card>
   );
 }

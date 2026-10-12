@@ -22,6 +22,16 @@ export const RECEIPT_MAX_BYTES = 3 * 1024 * 1024;
 export const PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
 export const RECEIPT_TYPES = [...PHOTO_TYPES, "application/pdf"];
 
+/** A way to pay the registration fee: a UPI payment link, shown as a QR code. */
+export interface PaymentQr {
+  label: string;
+  /** upi://pay?pa=<UPI ID>&pn=<name>&... exactly as encoded in the payee's QR code. */
+  payload: string;
+}
+
+export const PAYMENT_QR_MAX = 4;
+export const DECLARATION_MAX = 6000;
+
 export interface RegistrationSettings {
   is_open: boolean;
   title: string;
@@ -31,6 +41,11 @@ export interface RegistrationSettings {
   availability_question: string;
   availability_options: string[];
   declaration_text: string;
+  /** Link to the tournament rulebook, shown with `rulebook_message` at the top of the form. */
+  rulebook_url: string | null;
+  rulebook_message: string;
+  /** QR codes to pay the registration fee. */
+  payment_qr: PaymentQr[];
 }
 
 export const registrationFields = z.object({
@@ -53,3 +68,31 @@ export const registrationFields = z.object({
 });
 
 export type RegistrationInput = z.infer<typeof registrationFields>;
+
+const UPI_ID = /^[\w.-]{2,256}@[a-zA-Z][\w.-]{1,63}$/;
+
+/** UPI ID and payee name from a upi://pay link (null if it isn't one). */
+export function parseUpi(payload: string): { upiId: string; name: string } | null {
+  if (!/^upi:\/\/pay\?/i.test(payload)) return null;
+  const params = new URLSearchParams(payload.slice(payload.indexOf("?") + 1));
+  const upiId = params.get("pa")?.trim() ?? "";
+  if (!UPI_ID.test(upiId)) return null;
+  return { upiId, name: params.get("pn")?.trim() ?? "" };
+}
+
+/** A payment QR code ready to show on the form. */
+export interface PaymentOption extends PaymentQr {
+  upiId: string;
+  name: string;
+  /** The QR code as an SVG drawn on the server. */
+  svg: string;
+}
+
+/**
+ * A minimal UPI payment link for a typed-in UPI ID. The ID is left unencoded,
+ * as in app-generated QR codes (some UPI apps don't decode "%40").
+ */
+export function upiLink(upiId: string, name: string): string {
+  const id = encodeURIComponent(upiId.trim()).replace(/%40/g, "@");
+  return `upi://pay?pa=${id}${name.trim() ? `&pn=${encodeURIComponent(name.trim())}` : ""}&cu=INR`;
+}

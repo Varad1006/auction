@@ -104,7 +104,7 @@ enough for this event (see [Limits](#limits)).
    `xltgjnmeccyzncstgtlv`).
 2. **Create the database schema**, using one of these:
    - **SQL Editor** (simplest): open **SQL Editor → New query**, then paste
-     and **Run** each file in `supabase/migrations/`, in filename order (8
+     and **Run** each file in `supabase/migrations/`, in filename order (9
      files).
    - **Script over HTTPS:** create a personal access token (avatar →
      **Account preferences → Access Tokens**), then run
@@ -175,10 +175,22 @@ Share `https://<your-site>/register` with residents. It asks for name, contact d
 gender, playing role, batting/bowling style, T-shirt size, availability, a photo and the payment
 receipt. Submissions are private (only admins see contact details, flats and receipts).
 
-On **Admin → Registrations**: open/close the form, set the intro, payment instructions,
-availability options (e.g. match dates) and declaration; review each registration (photo and
-receipt links), pick a grade and **Approve** to add them to the auction pool with their photo,
-availability and notes on the player card. **CSV** exports everything (useful for T-shirt orders).
+On **Admin → Registrations**: open/close the form, set the intro, a rulebook link and message,
+payment instructions, availability options (e.g. match dates) and the undertaking & declaration
+(players must tick "I have read and agree" before they can submit); review each registration
+(photo and receipt links), pick a grade and **Approve** to add them to the auction pool with their
+photo, availability and notes on the player card. **CSV** exports everything (useful for T-shirt
+orders).
+
+**Payment QR codes:** under *Payment QR codes*, upload a screenshot or photo of each UPI QR code
+(or type a UPI ID). The app reads the payment link inside it and the form shows a sharp copy of the
+QR code with the UPI ID and a **Copy** button, for people paying from the same phone. Only UPI
+payment links are accepted.
+
+**Start fresh:** after a mock auction, **Admin → Settings → Danger zone → Start fresh** deletes all
+players (with their photos, bids, results and wishlists) and/or all registrations (with their
+files). Teams, owners and settings are kept. To keep the players and only clear bids and results,
+use **Reset auction** instead.
 
 ## Running the event
 

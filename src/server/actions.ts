@@ -7,6 +7,7 @@ import { parsePlayerImport } from "@/lib/import";
 import { photoUrlFrom } from "@/lib/photos";
 import { basePriceFor } from "@/lib/rules";
 import { GRADES, PLAYER_ROLES, POOLS, type AuctionState, type Me, type PoolConfig, type Role } from "@/lib/types";
+import { DECLARATION_MAX, PAYMENT_QR_MAX, parseUpi } from "@/lib/registration";
 import { WISHLIST_MAX } from "@/lib/wishlist";
 import { isPushEndpoint, notifyWishlist, sendTestPush } from "./push";
 import { REG_BUCKET } from "./registration";
@@ -226,6 +227,29 @@ export const actions = {
     roles: ["admin"],
     input: z.object({ confirm: z.literal("RESET") }),
     run: ({ me, db }) => rpc(db, "auction_reset", { p_actor: me.email }),
+  }),
+  // Clears a mock auction: every player (with their bids, results, wishlist
+  // entries and photos) and/or every registration (with its files). Teams,
+  // owners and all settings are kept.
+  "admin.cleanup": action({
+    roles: ["admin"],
+    input: z.object({ players: z.boolean(), registrations: z.boolean(), confirm: z.literal("DELETE") }),
+    run: async ({ me, db }, i) => {
+      if (!i.players && !i.registrations) throw new ActionError(400, "invalid_input", "Choose what to delete");
+      const out = { players: 0, registrations: 0 };
+      if (i.players) {
+        const photos = (await must(db.from("players").select("photo_url").not("photo_url", "is", null))) ?? [];
+        out.players = await rpc<number>(db, "admin_delete_all_players", { p_actor: me.email });
+        await removeFiles(db, PHOTO_BUCKET, photos.map((p) => storedPhotoPath(p.photo_url)));
+      }
+      if (i.registrations) {
+        const regs = (await must(db.from("registrations").delete().not("id", "is", null).select("photo_path, receipt_path"))) ?? [];
+        out.registrations = regs.length;
+        await removeFiles(db, REG_BUCKET, regs.flatMap((r) => [r.photo_path, r.receipt_path]));
+        await audit(db, me.email, "delete_all_registrations", { count: regs.length });
+      }
+      return out;
+    },
   }),
 
   // ---- Players ---------------------------------------------------------------
@@ -459,6 +483,30 @@ export const actions = {
       return null;
     },
   }),
+  // Payment QR codes on the form, as UPI payment links. Only upi://pay
+  // links are accepted, so the form can't be made to show any other QR code.
+  "registration.payments": action({
+    roles: ["admin"],
+    input: z.object({
+      items: z
+        .array(
+          z.object({
+            label: z.string().trim().max(60),
+            payload: z
+              .string()
+              .trim()
+              .max(500)
+              .refine((v) => parseUpi(v) !== null, "Not a UPI payment QR code"),
+          }),
+        )
+        .max(PAYMENT_QR_MAX),
+    }),
+    run: async ({ me, db }, i) => {
+      const row = await mustOne<{ payment_qr: unknown }>(db.from("registration_settings").upsert({ id: 1, payment_qr: i.items }).select("payment_qr").single());
+      await audit(db, me.email, "registration_payments", { count: i.items.length });
+      return row.payment_qr;
+    },
+  }),
   "registration.settings": action({
     roles: ["admin"],
     input: z.object({
@@ -469,7 +517,15 @@ export const actions = {
       receipt_required: z.boolean(),
       availability_question: z.string().trim().min(1).max(150),
       availability_options: z.array(z.string().trim().min(1).max(60)).max(20),
-      declaration_text: z.string().trim().min(1).max(2000),
+      declaration_text: z.string().trim().min(1).max(DECLARATION_MAX),
+      rulebook_url: z
+        .string()
+        .trim()
+        .max(500)
+        .refine((v) => v === "" || /^https:\/\/\S+$/.test(v), "Rulebook link must start with https://")
+        .transform((v) => v || null)
+        .optional(),
+      rulebook_message: z.string().trim().max(300).optional(),
     }),
     run: async ({ me, db }, i) => {
       const row = await must(db.from("registration_settings").upsert({ id: 1, ...i }).select().single());
@@ -590,9 +646,22 @@ export type ActionInput<N extends ActionName> = z.input<(typeof actions)[N]["inp
 
 export const PHOTO_BUCKET = "player-photos";
 
-export async function removeStoredPhoto(db: SupabaseClient, url: string | null | undefined) {
+/** The storage path of a photo uploaded to our bucket (null for outside links). */
+export function storedPhotoPath(url: string | null | undefined): string | null {
   const marker = `/${PHOTO_BUCKET}/`;
-  if (!url || !url.includes(marker)) return;
-  const path = url.slice(url.indexOf(marker) + marker.length).split("?")[0];
-  await db.storage.from(PHOTO_BUCKET).remove([path]);
+  if (!url || !url.includes(marker)) return null;
+  return url.slice(url.indexOf(marker) + marker.length).split("?")[0];
+}
+
+export async function removeStoredPhoto(db: SupabaseClient, url: string | null | undefined) {
+  const path = storedPhotoPath(url);
+  if (path) await db.storage.from(PHOTO_BUCKET).remove([path]);
+}
+
+async function removeFiles(db: SupabaseClient, bucket: string, paths: (string | null)[]) {
+  const list = paths.filter((p): p is string => !!p);
+  for (let i = 0; i < list.length; i += 500) {
+    const { error } = await db.storage.from(bucket).remove(list.slice(i, i + 500));
+    if (error) console.error(`Removing files from ${bucket} failed`, error);
+  }
 }

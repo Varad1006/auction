@@ -48,8 +48,11 @@ const settings = (is_open) =>
     receipt_required: true,
     availability_question: "Availability (Nov 2025) – 7:30 am till 1:00 pm",
     availability_options: ["Sat 8 Nov", "Sun 9 Nov", "Sat 15 Nov", "Sun 16 Nov"],
-    declaration_text: "I confirm the details are correct and I will follow the rules.",
+    declaration_text: "I confirm and undertake the following:\n\n1. I will follow the rules.\n2. I am fit to play.",
+    rulebook_url: "https://example.com/rulebook",
+    rulebook_message: "Please go through the Rule Book before registering.",
   });
+const UPI = "upi://pay?pa=test.payee@okaxis&pn=Test%20Payee&aid=abc";
 
 // Files
 const photo = await sharp({ create: { width: 600, height: 750, channels: 3, background: "#1e40af" } })
@@ -77,6 +80,8 @@ const files = { photo: [photo, "image/jpeg", "p.jpg"], receipt: [Buffer.from("%P
 
 console.log("Access and validation");
 check((await settings(false)).status === 200, "admin can save form settings");
+check((await act("registration.payments", { items: [{ label: "", payload: "https://evil.example/qr" }] })).status === 400, "only UPI payment links are accepted as QR codes");
+check((await act("registration.payments", { items: [{ label: "Fees", payload: UPI }] })).status === 200, "admin saves a payment QR code");
 check((await post(fields, files)).status === 403, "closed form rejects submissions");
 await settings(true);
 const fake = await post(fields, { ...files, photo: [Buffer.from("not an image"), "image/jpeg", "x.jpg"] });
@@ -108,7 +113,14 @@ page.on("pageerror", (e) => {
 });
 await page.goto(`${APP}/register`);
 await page.getByRole("heading", { name: /Registration/ }).waitFor();
-await page.getByRole("button", { name: "Submit registration" }).click();
+check((await page.getByRole("link", { name: /Rule Book before registering/ }).getAttribute("href")) === "https://example.com/rulebook", "rulebook link and message are shown");
+check((await page.getByRole("img", { name: "UPI QR code for Test Payee" }).count()) === 1, "payment QR code is drawn on the form");
+check((await page.getByText("test.payee@okaxis").count()) === 1 && (await page.getByRole("button", { name: "Copy UPI ID test.payee@okaxis" }).count()) === 1, "UPI ID is shown with a Copy button");
+const submitButton = page.getByRole("button", { name: "Submit registration" });
+check(await submitButton.isDisabled(), "submit is disabled until the declaration is accepted");
+await page.getByLabel("I have read and agree to the Undertaking and Declaration").check();
+check(await submitButton.isEnabled(), "accepting the declaration enables submit");
+await submitButton.click();
 check((await page.getByText("Enter your full name").count()) === 1, "empty submit shows inline errors");
 await page.getByLabel("Full name").fill("Rohan Patil");
 await page.getByLabel("Email").fill(email);
@@ -127,7 +139,6 @@ await page.locator('input[type=file][accept="image/*"]').setInputFiles(`${SHOTS}
 await page.getByAltText("Your photo").waitFor();
 await page.locator('input[type=file][accept="image/*,application/pdf"]').setInputFiles(`${SHOTS}/receipt.pdf`);
 await page.getByText("Receipt attached").waitFor();
-await page.getByLabel("I agree").check();
 await page.screenshot({ path: `${SHOTS}/r-01-form.png`, fullPage: true });
 await page.getByRole("button", { name: "Submit registration" }).click();
 await page.getByText("You're registered!").waitFor({ timeout: 15000 });
@@ -169,5 +180,20 @@ await admPage.waitForTimeout(500);
 await admPage.screenshot({ path: `${SHOTS}/r-04-admin.png`, fullPage: true });
 
 await browser.close();
+
+console.log("Start fresh");
+const ownerCleanup = await fetch(`${APP}/api/actions/admin.cleanup`, {
+  method: "POST",
+  headers: { "content-type": "application/json", origin: APP, cookie: cookieHeader(owner) },
+  body: JSON.stringify({ players: false, registrations: true, confirm: "DELETE" }),
+});
+check(ownerCleanup.status === 403, "owners can't clean up the database");
+check((await act("admin.cleanup", { players: false, registrations: true, confirm: "yes" })).status === 400, "clean-up needs DELETE typed to confirm");
+const cleaned = await act("admin.cleanup", { players: false, registrations: true, confirm: "DELETE" });
+const after = await (await fetch(`${APP}/api/admin/registrations`, { headers: { cookie: cookieHeader(admin) } })).json();
+check(cleaned.status === 200 && after.registrations.length === 0, `admin deletes all registrations (${cleaned.body?.data?.registrations ?? cleaned.body?.message})`);
+check((await (await fetch(`${SB_URL}/rest/v1/players?select=id&limit=1`, { headers: { apikey: ANON, authorization: `Bearer ${ANON}` } })).json()).length === 1, "players are kept when only registrations are cleared");
+await act("registration.payments", { items: [] });
+
 console.log(failures ? `\n${failures} check(s) failed` : "\nAll checks passed");
 process.exit(failures ? 1 : 0);

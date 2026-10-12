@@ -10,6 +10,7 @@ import {
   RECEIPT_MAX_BYTES,
   registrationFields,
   TSHIRT_SIZES,
+  type PaymentOption,
   type RegistrationSettings,
 } from "@/lib/registration";
 import { PLAYER_ROLES } from "@/lib/types";
@@ -17,7 +18,7 @@ import { Button, inputClass } from "../ui";
 
 type Errors = Record<string, string>;
 
-export function RegisterForm({ settings }: { settings: RegistrationSettings }) {
+export function RegisterForm({ settings, payments }: { settings: RegistrationSettings; payments: PaymentOption[] }) {
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(Object.keys(registrationFields.shape).map((k) => [k, ""])),
   );
@@ -128,6 +129,22 @@ export function RegisterForm({ settings }: { settings: RegistrationSettings }) {
       <header>
         <h1 className="text-2xl font-extrabold">{settings.title}</h1>
         {settings.intro && <p className="mt-2 whitespace-pre-line text-slate-300">{settings.intro}</p>}
+        {settings.rulebook_url && (
+          <a
+            href={settings.rulebook_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 flex items-center gap-3 rounded-2xl bg-amber-400/10 p-4 ring-1 ring-amber-400/40 transition hover:bg-amber-400/15"
+          >
+            <span className="text-3xl" aria-hidden>
+              📘
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-bold text-amber-100">{settings.rulebook_message || "Read the rulebook before registering."}</span>
+              <span className="mt-0.5 block text-sm font-semibold text-amber-300 underline">Open the rulebook ↗</span>
+            </span>
+          </a>
+        )}
       </header>
 
       {/* Honeypot for bots; hidden from people and screen readers. */}
@@ -199,34 +216,111 @@ export function RegisterForm({ settings }: { settings: RegistrationSettings }) {
         </div>
       </Section>
 
-      <Section title={`Payment receipt${settings.receipt_required ? "" : " (optional)"}`}>
+      <Section title="Payment">
         {settings.payment_instructions && <p className="whitespace-pre-line text-sm text-slate-300">{settings.payment_instructions}</p>}
+        {payments.length > 0 && (
+          <>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {payments.map((p) => (
+                <PaymentCard key={p.payload} payment={p} />
+              ))}
+            </div>
+            <p className="text-xs text-slate-400">
+              Paying from this phone? Tap <b>Copy</b> and paste the UPI ID in any UPI app (GPay, PhonePe, Paytm…), or take a
+              screenshot of the QR code and scan it from your app&apos;s gallery.
+            </p>
+          </>
+        )}
         <div data-error={!!errors.receipt}>
+          <p className="mb-2 text-sm font-medium text-slate-300">
+            Payment screenshot or receipt{settings.receipt_required ? "" : " (optional)"}
+          </p>
           <FileButton label={receipt ? "Change receipt" : "Upload receipt"} accept="image/*,application/pdf" onPick={pickReceipt} />
           {receipt && <p className="mt-2 text-xs text-emerald-300">✓ Receipt attached</p>}
           <FieldError msg={errors.receipt} />
         </div>
       </Section>
 
-      <Section title="Undertaking and declaration">
-        <p className="whitespace-pre-line text-sm text-slate-300">{settings.declaration_text}</p>
-        <label data-error={!!errors.declaration} className="flex items-start gap-3">
+      <Section title="Undertaking and Declaration">
+        <div
+          tabIndex={0}
+          aria-label="Undertaking and Declaration"
+          className="max-h-80 overflow-y-auto whitespace-pre-line rounded-xl bg-slate-950 p-3 text-sm leading-relaxed text-slate-300 ring-1 ring-white/10"
+        >
+          {settings.declaration_text}
+        </div>
+        {settings.rulebook_url && (
+          <p className="text-sm text-slate-400">
+            Rule Book:{" "}
+            <a href={settings.rulebook_url} target="_blank" rel="noopener noreferrer" className="font-semibold text-amber-300 underline">
+              open it here ↗
+            </a>
+          </p>
+        )}
+        <label
+          data-error={!!errors.declaration}
+          className={cn(
+            "flex items-start gap-3 rounded-xl p-3 ring-1",
+            values.declaration === "yes" ? "bg-emerald-500/10 ring-emerald-500/40" : "bg-slate-950 ring-white/15",
+          )}
+        >
           <input
             type="checkbox"
-            className="mt-0.5 h-5 w-5 accent-amber-400"
+            className="mt-0.5 h-5 w-5 shrink-0 accent-amber-400"
             checked={values.declaration === "yes"}
             onChange={(e) => set("declaration", e.target.checked ? "yes" : "")}
           />
-          <span className="text-sm font-medium">I agree</span>
+          <span className="text-sm font-semibold">I have read and agree to the Undertaking and Declaration</span>
         </label>
         <FieldError msg={errors.declaration} />
       </Section>
 
       {serverError && <p role="alert" className="rounded-xl bg-rose-950 p-3 text-sm text-rose-200">{serverError}</p>}
-      <Button type="submit" variant="primary" size="lg" className="w-full" busy={submitting}>
+      <Button type="submit" variant="primary" size="lg" className="w-full" busy={submitting} disabled={values.declaration !== "yes"}>
         {submitting ? "Submitting…" : "Submit registration"}
       </Button>
+      {values.declaration !== "yes" && (
+        <p className="-mt-3 text-center text-xs text-slate-500">Tick &ldquo;I have read and agree&rdquo; above to submit.</p>
+      )}
     </form>
+  );
+}
+
+function PaymentCard({ payment }: { payment: PaymentOption }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(payment.upiId);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      window.prompt("Copy this UPI ID", payment.upiId);
+    }
+  };
+  return (
+    <div className="flex flex-col items-center rounded-xl bg-white p-3 text-slate-900">
+      {payment.label && <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{payment.label}</p>}
+      <div
+        role="img"
+        aria-label={`UPI QR code for ${payment.name || payment.upiId}`}
+        className="w-full max-w-[220px] [&>svg]:h-auto [&>svg]:w-full"
+        dangerouslySetInnerHTML={{ __html: payment.svg }}
+      />
+      {payment.name && <p className="mt-1 text-center font-bold">{payment.name}</p>}
+      <div className="mt-2 flex w-full items-center gap-2 rounded-lg bg-slate-100 py-1.5 pl-2.5 pr-1.5">
+        <span className="min-w-0 flex-1 truncate font-mono text-xs" title={payment.upiId}>
+          {payment.upiId}
+        </span>
+        <button
+          type="button"
+          onClick={() => void copy()}
+          aria-label={`Copy UPI ID ${payment.upiId}`}
+          className="shrink-0 rounded-md bg-slate-900 px-2.5 py-1 text-xs font-bold text-white"
+        >
+          {copied ? "Copied ✓" : "Copy"}
+        </button>
+      </div>
+    </div>
   );
 }
 

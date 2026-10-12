@@ -348,6 +348,32 @@ describe.skipIf(!ADMIN_URL)("auction database", () => {
       expect((await q("select base_price from players where id = $1", [waiting]))[0].base_price).toBe(20);
       expect((await q("select base_price from players where id = $1", [sold]))[0].base_price).toBe(99);
     });
+
+    it("deletes every player for a fresh start, but not mid-bidding", async () => {
+      const sold = await addPlayer("Fresh Sold");
+      const waiting = await addPlayer("Fresh Waiting");
+      await putOnBlock(sold);
+      await bid(teams[0].id, sold, 20);
+      expect((await errorOf(q("select admin_delete_all_players('a')"))).hint).toBe("block_busy");
+      await q("select auction_sell('a', $1)", [sold]);
+      await q("insert into wishlist (team_id, player_id, added_by) values ($1, $2, 'o')", [teams[1].id, waiting]);
+      const reg = await q<{ id: string }>(
+        `insert into registrations (full_name, email, phone, flat_number, age, gender, role, photo_path, declaration, status, player_id)
+         values ('Reg', 'reg@example.com', '9999999999', 'A-1', 30, 'men', 'Batter', 'x/photo.jpg', true, 'approved', $1) returning id`,
+        [waiting],
+      );
+      const n = (await q<{ n: number }>("select admin_delete_all_players('a') as n"))[0].n;
+      expect(n).toBe(2);
+      for (const table of ["players", "bids", "results", "wishlist"]) {
+        expect(await q(`select 1 from ${table}`)).toHaveLength(0);
+      }
+      const s = await state();
+      expect(s.phase).toBe("idle");
+      expect(s.current_player_id).toBeNull();
+      const r = (await q("select status, player_id from registrations where id = $1", [reg[0].id]))[0];
+      expect(r).toEqual({ status: "pending", player_id: null });
+      await q("delete from registrations where true");
+    });
   });
 
   describe("concurrency", () => {

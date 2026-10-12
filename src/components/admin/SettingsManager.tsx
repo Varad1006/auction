@@ -238,22 +238,74 @@ function LimitsForm({ teamId, pool, limit }: { teamId: string; pool: Pool; limit
 
 function DangerZone() {
   const { busy, run } = useRunner();
+  const { players } = useAuction();
+  const [wipe, setWipe] = useState({ players: true, registrations: false });
   return (
     <Card title="Danger zone" className="ring-rose-500/30">
-      <p className="mb-3 text-sm text-slate-400">
-        Reset puts every player back in the pool, deletes all bids and results and restarts both pools at round 1. Use it
-        after a rehearsal. Players, teams, settings and owners are kept.
-      </p>
-      <Button
-        variant="danger"
-        busy={busy === "reset"}
-        onClick={() => {
-          const typed = prompt("Type RESET to wipe all bids and results");
-          if (typed === "RESET") void run("reset", () => callAction("auction.reset", { confirm: "RESET" }), "Auction reset");
-        }}
-      >
-        Reset auction
-      </Button>
+      <div className="space-y-6">
+        <div>
+          <h3 className="font-bold">Reset auction</h3>
+          <p className="mb-3 mt-1 text-sm text-slate-400">
+            Puts every player back in the pool, deletes all bids and results and restarts both pools at round 1. Use it after a
+            rehearsal. Players, teams, settings and owners are kept.
+          </p>
+          <Button
+            variant="danger"
+            busy={busy === "reset"}
+            onClick={() => {
+              const typed = prompt("Type RESET to wipe all bids and results");
+              if (typed === "RESET") void run("reset", () => callAction("auction.reset", { confirm: "RESET" }), "Auction reset");
+            }}
+          >
+            Reset auction
+          </Button>
+        </div>
+        <div className="border-t border-white/10 pt-5">
+          <h3 className="font-bold">Start fresh</h3>
+          <p className="mb-3 mt-1 text-sm text-slate-400">
+            Clears out a mock auction before the real one. Teams, owners, pool settings and the registration form are kept.
+          </p>
+          <div className="space-y-2 text-sm">
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-rose-500"
+                checked={wipe.players}
+                onChange={(e) => setWipe((w) => ({ ...w, players: e.target.checked }))}
+              />
+              <span>
+                Delete <b>all {players.length} players</b> and their photos, with all bids, results and team wishlists. Registrations
+                that were approved go back to pending.
+              </span>
+            </label>
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-rose-500"
+                checked={wipe.registrations}
+                onChange={(e) => setWipe((w) => ({ ...w, registrations: e.target.checked }))}
+              />
+              <span>
+                Delete <b>all registrations</b> with their photos and payment receipts.
+              </span>
+            </label>
+          </div>
+          <Button
+            variant="danger"
+            className="mt-3"
+            disabled={!wipe.players && !wipe.registrations}
+            busy={busy === "cleanup"}
+            onClick={() => {
+              const what = [wipe.players && "all players", wipe.registrations && "all registrations"].filter(Boolean).join(" and ");
+              const typed = prompt(`This permanently deletes ${what}. It can't be undone.\n\nType DELETE to continue`);
+              if (typed !== "DELETE") return;
+              void run("cleanup", () => callAction("admin.cleanup", { ...wipe, confirm: "DELETE" }), "Done: the database is cleaned up");
+            }}
+          >
+            Delete permanently
+          </Button>
+        </div>
+      </div>
     </Card>
   );
 }

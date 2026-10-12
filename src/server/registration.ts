@@ -14,11 +14,15 @@ export const DEFAULT_SETTINGS: RegistrationSettings = {
   availability_question: "Availability",
   availability_options: [],
   declaration_text: "I confirm the details above are correct and I will follow the tournament rules.",
+  rulebook_url: null,
+  rulebook_message: "Please read the rulebook before registering.",
+  payment_qr: [],
 };
 
 export async function registrationSettings(db: SupabaseClient): Promise<RegistrationSettings> {
   const { data } = await db.from("registration_settings").select("*").eq("id", 1).maybeSingle();
-  return data ? (data as RegistrationSettings) : DEFAULT_SETTINGS;
+  // Defaults fill columns from migrations that haven't been run yet.
+  return data ? { ...DEFAULT_SETTINGS, ...(data as Partial<RegistrationSettings>) } : DEFAULT_SETTINGS;
 }
 
 /** Checks a file's first bytes, so a renamed file can't pose as an image/PDF. */
