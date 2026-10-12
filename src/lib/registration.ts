@@ -1,6 +1,7 @@
 // Shared definition of the registration form: options and validation used by
 // both the public form and the /api/register endpoint.
 import { z } from "zod";
+import { hasImpossibleDomain, suggestEmail } from "./email-typos";
 import { PLAYER_ROLES } from "./types";
 
 export const BATTING_STYLES = ["Right-hand bat", "Left-hand bat"];
@@ -95,7 +96,15 @@ export const registrationFields = z.object({
         .max(80, "Name is too long")
         .regex(/^[\p{L}\p{M}][\p{L}\p{M} .'-]*$/u, "Use letters only in your name"),
     ),
-  email: z.string().trim().toLowerCase().pipe(z.email("Enter a valid email")),
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .pipe(z.email("Enter a valid email"))
+    .superRefine((v, ctx) => {
+      // Endings like ".con" can never work; other near misses are only suggested in the form.
+      if (hasImpossibleDomain(v)) ctx.addIssue({ code: "custom", message: `Check your email: did you mean ${suggestEmail(v)}?` });
+    }),
   phone: mobileNumber,
   flat_number: z
     .string()

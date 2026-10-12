@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { hasImpossibleDomain, suggestEmail } from "@/lib/email-typos";
 import { APP_NAME } from "@/lib/env";
 import { cn } from "@/lib/format";
 import { resizeImage } from "@/lib/image";
@@ -35,6 +36,10 @@ export function RegisterForm({ settings, payments }: { settings: RegistrationSet
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  // Email typo check: shown once the field is left (or on submit) until the
+  // suggestion is taken or the person says their address is right.
+  const [emailLeft, setEmailLeft] = useState(false);
+  const [keptEmail, setKeptEmail] = useState<string | null>(null);
 
   if (!settings.is_open) {
     return (
@@ -72,6 +77,7 @@ export function RegisterForm({ settings, payments }: { settings: RegistrationSet
     if (errors[k]) setErrors((e) => ({ ...e, [k]: "" }));
   };
   const useOptions = settings.availability_options.length > 0;
+  const emailSuggestion = keptEmail === values.email ? null : suggestEmail(values.email ?? "");
   const availabilityValue = useOptions ? availability.join(", ") : (values.availability ?? "");
 
   async function pickPhoto(file: File | undefined) {
@@ -113,6 +119,10 @@ export function RegisterForm({ settings, payments }: { settings: RegistrationSet
     if (!photo) errs.photo = "Please upload your photo";
     else if (photo.size > PHOTO_MAX_BYTES) errs.photo = "Photo is too large";
     if (settings.receipt_required && !receipt) errs.receipt = "Please upload your payment receipt";
+    if (emailSuggestion) {
+      errs.email ||= "Please check your email address";
+      setEmailLeft(true);
+    }
     setErrors(errs);
     if (Object.values(errs).some(Boolean)) {
       document.querySelector("[data-error='true']")?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -183,10 +193,40 @@ export function RegisterForm({ settings, payments }: { settings: RegistrationSet
             autoCapitalize="none"
             spellCheck={false}
             maxLength={120}
+            onFocus={() => setEmailLeft(false)}
+            onBlur={() => setEmailLeft(true)}
             values={values}
             errors={errors}
             set={set}
           />
+          {emailLeft && emailSuggestion && (
+            <div role="alert" className="-mt-1 rounded-xl bg-amber-400/10 p-3 text-sm ring-1 ring-amber-400/40">
+              <p className="text-amber-100">
+                Did you mean <b className="break-all">{emailSuggestion}</b>?
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => set("email", emailSuggestion)}
+                  className="rounded-lg bg-amber-400 px-3 py-1.5 font-semibold text-amber-950"
+                >
+                  Yes, use this
+                </button>
+                {!hasImpossibleDomain(values.email ?? "") && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setKeptEmail(values.email ?? "");
+                      setErrors((e) => ({ ...e, email: "" }));
+                    }}
+                    className="rounded-lg bg-white/10 px-3 py-1.5 font-semibold"
+                  >
+                    No, mine is correct
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
           <Input
             label="Mobile number"
             name="phone"
