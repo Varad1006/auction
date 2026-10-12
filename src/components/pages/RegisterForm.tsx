@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { APP_NAME } from "@/lib/env";
 import { cn } from "@/lib/format";
 import { resizeImage } from "@/lib/image";
 import {
@@ -35,24 +36,32 @@ export function RegisterForm({ settings, payments }: { settings: RegistrationSet
 
   if (!settings.is_open) {
     return (
-      <div className="mx-auto max-w-lg rounded-2xl bg-slate-900 p-8 text-center ring-1 ring-white/10">
-        <p className="text-4xl">🏏</p>
-        <h1 className="mt-3 text-2xl font-extrabold">{settings.title}</h1>
-        <p className="mt-2 text-slate-400">Registration is closed right now. Please check back later or contact the organisers.</p>
-      </div>
+      <FormFrame>
+        <TitleCard title={settings.title}>
+          <p className="mt-2 text-slate-400">Registration is closed right now. Please check back later or contact the organisers.</p>
+        </TitleCard>
+      </FormFrame>
     );
   }
 
   if (done) {
     return (
-      <div className="mx-auto max-w-lg rounded-2xl bg-slate-900 p-8 text-center ring-1 ring-emerald-500/40">
-        <p className="text-5xl">✅</p>
-        <h1 className="mt-3 text-2xl font-extrabold">You&apos;re registered!</h1>
-        <p className="mt-2 text-slate-300">
-          Thanks, {values.full_name?.split(" ")[0]}. The organisers will review your registration and add you to the auction
-          pool. See you on the field!
-        </p>
-      </div>
+      <FormFrame>
+        <TitleCard title={settings.title}>
+          <p className="mt-4 text-4xl" aria-hidden>
+            ✅
+          </p>
+          <h2 className="mt-2 text-xl font-extrabold">You&apos;re registered!</h2>
+          <p className="mt-2 text-slate-300">
+            Thanks, {values.full_name?.split(" ")[0]}. The organisers will review your registration and add you to the auction
+            pool. See you on the field!
+          </p>
+          {/* A full reload gives a clean, empty form. */}
+          <a href="/register" className="mt-4 inline-block text-sm font-semibold text-amber-300 underline">
+            Submit another response
+          </a>
+        </TitleCard>
+      </FormFrame>
     );
   }
 
@@ -127,165 +136,201 @@ export function RegisterForm({ settings, payments }: { settings: RegistrationSet
   }
 
   return (
-    <form onSubmit={submit} noValidate className="mx-auto max-w-xl space-y-5">
-      <header>
-        <h1 className="text-2xl font-extrabold">{settings.title}</h1>
-        {settings.intro && <p className="mt-2 whitespace-pre-line text-slate-300">{settings.intro}</p>}
-        {settings.rulebook_url && (
-          <a
-            href={settings.rulebook_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-4 flex items-center gap-3 rounded-2xl bg-amber-400/10 p-4 ring-1 ring-amber-400/40 transition hover:bg-amber-400/15"
-          >
-            <span className="text-3xl" aria-hidden>
-              📘
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block font-bold text-amber-100">{settings.rulebook_message || "Read the rulebook before registering."}</span>
-              <span className="mt-0.5 block text-sm font-semibold text-amber-300 underline">Open the rulebook ↗</span>
-            </span>
-          </a>
-        )}
-      </header>
-
-      {/* Honeypot for bots; hidden from people and screen readers. */}
-      <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden className="absolute -left-[9999px] h-0 w-0 opacity-0" />
-
-      <Section title="About you" note="Only the organisers see your contact details and flat number.">
-        <Input label="Full name" name="full_name" autoComplete="name" values={values} errors={errors} set={set} />
-        <Input label="Email" name="email" type="email" autoComplete="email" values={values} errors={errors} set={set} />
-        <Input label="Contact number" name="phone" type="tel" autoComplete="tel" values={values} errors={errors} set={set} />
-        <div className="grid grid-cols-2 gap-3">
-          <Input label="Flat number" name="flat_number" placeholder="e.g. B-1203" values={values} errors={errors} set={set} />
-          <Input label="Age" name="age" type="number" inputMode="numeric" values={values} errors={errors} set={set} />
-        </div>
-        <Choice label="Gender" name="gender" options={[["men", "Male"], ["women", "Female"]]} values={values} errors={errors} set={set} />
-      </Section>
-
-      <Section title="Your cricket">
-        <Select label="Playing role" name="role" options={PLAYER_ROLES} values={values} errors={errors} set={set} />
-        <Select label="Batting style" name="batting_style" options={BATTING_STYLES} values={values} errors={errors} set={set} />
-        <Select label="Bowling style" name="bowling_style" options={BOWLING_STYLES} values={values} errors={errors} set={set} />
-        <Select label="T-shirt size" name="tshirt_size" options={TSHIRT_SIZES} values={values} errors={errors} set={set} />
-      </Section>
-
-      <Section title={settings.availability_question}>
-        {useOptions ? (
-          <div data-error={!!errors.availability} className="space-y-2">
-            {settings.availability_options.map((o) => (
-              <label key={o} className="flex items-center gap-3 rounded-xl bg-slate-950 px-3 py-3 ring-1 ring-white/10">
-                <input
-                  type="checkbox"
-                  className="h-5 w-5 accent-amber-400"
-                  checked={availability.includes(o)}
-                  onChange={(e) => {
-                    setAvailability((a) => (e.target.checked ? [...a, o] : a.filter((x) => x !== o)));
-                    setErrors((er) => ({ ...er, availability: "" }));
-                  }}
-                />
-                {o}
-              </label>
-            ))}
-            <FieldError msg={errors.availability} />
-          </div>
-        ) : (
-          <Input label="Your availability" name="availability" placeholder="e.g. All match days" values={values} errors={errors} set={set} />
-        )}
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-slate-300">Additional information (optional)</span>
-          <textarea
-            className={inputClass}
-            rows={3}
-            maxLength={500}
-            placeholder="Past teams, achievements, anything the team owners should know"
-            value={values.additional_info ?? ""}
-            onChange={(e) => set("additional_info", e.target.value)}
-          />
-        </label>
-      </Section>
-
-      <Section title="Photo" note="This photo is shown on your player card during the auction.">
-        <div data-error={!!errors.photo} className="flex items-center gap-4">
-          <div className="flex h-28 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-800 text-3xl ring-1 ring-white/10">
-            {photoPreview ? <img src={photoPreview} alt="Your photo" className="h-full w-full object-cover" /> : "📷"}
-          </div>
-          <div>
-            <FileButton label={photo ? "Change photo" : "Upload photo"} accept="image/*" onPick={pickPhoto} />
-            <p className="mt-2 text-xs text-slate-500">A clear, front-facing photo works best.</p>
-            <FieldError msg={errors.photo} />
-          </div>
-        </div>
-      </Section>
-
-      <Section title="Payment">
-        {settings.payment_instructions && <p className="whitespace-pre-line text-sm text-slate-300">{settings.payment_instructions}</p>}
-        {payments.length > 0 && (
-          <>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {payments.map((p) => (
-                <PaymentCard key={p.payload} payment={p} />
-              ))}
-            </div>
-            <p className="text-xs text-slate-400">
-              Paying from this phone? Tap <b>Download QR</b>, then in your UPI app (GPay, PhonePe, Paytm…) tap <i>Scan QR</i> and
-              pick the image from your gallery. Or tap <b>Copy</b> and pay to that{" "}
-              {payments.every((p) => p.phone) ? "number" : "number or UPI ID"}.
-            </p>
-          </>
-        )}
-        <div data-error={!!errors.receipt}>
-          <p className="mb-2 text-sm font-medium text-slate-300">
-            Payment screenshot or receipt{settings.receipt_required ? "" : " (optional)"}
-          </p>
-          <FileButton label={receipt ? "Change receipt" : "Upload receipt"} accept="image/*,application/pdf" onPick={pickReceipt} />
-          {receipt && <p className="mt-2 text-xs text-emerald-300">✓ Receipt attached</p>}
-          <FieldError msg={errors.receipt} />
-        </div>
-      </Section>
-
-      <Section title="Undertaking and Declaration">
-        <div
-          tabIndex={0}
-          aria-label="Undertaking and Declaration"
-          className="max-h-80 overflow-y-auto whitespace-pre-line rounded-xl bg-slate-950 p-3 text-sm leading-relaxed text-slate-300 ring-1 ring-white/10"
-        >
-          {settings.declaration_text}
-        </div>
-        {settings.rulebook_url && (
-          <p className="text-sm text-slate-400">
-            Rule Book:{" "}
-            <a href={settings.rulebook_url} target="_blank" rel="noopener noreferrer" className="font-semibold text-amber-300 underline">
-              open it here ↗
+    <FormFrame>
+      <form onSubmit={submit} noValidate className="space-y-4">
+        <TitleCard title={settings.title}>
+          {settings.intro && <p className="mt-2 whitespace-pre-line text-slate-300">{settings.intro}</p>}
+          {settings.rulebook_url && (
+            <a
+              href={settings.rulebook_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 flex items-center gap-3 rounded-2xl bg-amber-400/10 p-4 ring-1 ring-amber-400/40 transition hover:bg-amber-400/15"
+            >
+              <span className="text-3xl" aria-hidden>
+                📘
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-bold text-amber-100">{settings.rulebook_message || "Read the rulebook before registering."}</span>
+                <span className="mt-0.5 block text-sm font-semibold text-amber-300 underline">Open the rulebook ↗</span>
+              </span>
             </a>
-          </p>
-        )}
-        <label
-          data-error={!!errors.declaration}
-          className={cn(
-            "flex items-start gap-3 rounded-xl p-3 ring-1",
-            values.declaration === "yes" ? "bg-emerald-500/10 ring-emerald-500/40" : "bg-slate-950 ring-white/15",
           )}
-        >
-          <input
-            type="checkbox"
-            className="mt-0.5 h-5 w-5 shrink-0 accent-amber-400"
-            checked={values.declaration === "yes"}
-            onChange={(e) => set("declaration", e.target.checked ? "yes" : "")}
-          />
-          <span className="text-sm font-semibold">I have read and agree to the Undertaking and Declaration</span>
-        </label>
-        <FieldError msg={errors.declaration} />
-      </Section>
+        </TitleCard>
 
-      {serverError && <p role="alert" className="rounded-xl bg-rose-950 p-3 text-sm text-rose-200">{serverError}</p>}
-      <Button type="submit" variant="primary" size="lg" className="w-full" busy={submitting} disabled={values.declaration !== "yes"}>
-        {submitting ? "Submitting…" : "Submit registration"}
-      </Button>
-      {values.declaration !== "yes" && (
-        <p className="-mt-3 text-center text-xs text-slate-500">Tick &ldquo;I have read and agree&rdquo; above to submit.</p>
-      )}
-    </form>
+        {/* Honeypot for bots; hidden from people and screen readers. */}
+        <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden className="absolute -left-[9999px] h-0 w-0 opacity-0" />
+
+        <Section title="About you" note="Only the organisers see your contact details and flat number.">
+          <Input label="Full name" name="full_name" autoComplete="name" values={values} errors={errors} set={set} />
+          <Input label="Email" name="email" type="email" autoComplete="email" values={values} errors={errors} set={set} />
+          <Input label="Contact number" name="phone" type="tel" autoComplete="tel" values={values} errors={errors} set={set} />
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Flat number" name="flat_number" placeholder="e.g. B-1203" values={values} errors={errors} set={set} />
+            <Input label="Age" name="age" type="number" inputMode="numeric" values={values} errors={errors} set={set} />
+          </div>
+          <Choice label="Gender" name="gender" options={[["men", "Male"], ["women", "Female"]]} values={values} errors={errors} set={set} />
+        </Section>
+
+        <Section title="Your cricket">
+          <Select label="Playing role" name="role" options={PLAYER_ROLES} values={values} errors={errors} set={set} />
+          <Select label="Batting style" name="batting_style" options={BATTING_STYLES} values={values} errors={errors} set={set} />
+          <Select label="Bowling style" name="bowling_style" options={BOWLING_STYLES} values={values} errors={errors} set={set} />
+          <Select label="T-shirt size" name="tshirt_size" options={TSHIRT_SIZES} values={values} errors={errors} set={set} />
+        </Section>
+
+        <Section title={settings.availability_question}>
+          {useOptions ? (
+            <div data-error={!!errors.availability} className="space-y-2">
+              {settings.availability_options.map((o) => (
+                <label key={o} className="flex items-center gap-3 rounded-xl bg-slate-950 px-3 py-3 ring-1 ring-white/10">
+                  <input
+                    type="checkbox"
+                    className="h-5 w-5 accent-amber-400"
+                    checked={availability.includes(o)}
+                    onChange={(e) => {
+                      setAvailability((a) => (e.target.checked ? [...a, o] : a.filter((x) => x !== o)));
+                      setErrors((er) => ({ ...er, availability: "" }));
+                    }}
+                  />
+                  {o}
+                </label>
+              ))}
+              <FieldError msg={errors.availability} />
+            </div>
+          ) : (
+            <Input label="Your availability" name="availability" placeholder="e.g. All match days" values={values} errors={errors} set={set} />
+          )}
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-300">Additional information (optional)</span>
+            <textarea
+              className={inputClass}
+              rows={3}
+              maxLength={500}
+              placeholder="Past teams, achievements, anything the team owners should know"
+              value={values.additional_info ?? ""}
+              onChange={(e) => set("additional_info", e.target.value)}
+            />
+          </label>
+        </Section>
+
+        <Section title="Photo" note="This photo is shown on your player card during the auction.">
+          <div data-error={!!errors.photo} className="flex items-center gap-4">
+            <div className="flex h-28 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-800 text-3xl ring-1 ring-white/10">
+              {photoPreview ? <img src={photoPreview} alt="Your photo" className="h-full w-full object-cover" /> : "📷"}
+            </div>
+            <div>
+              <FileButton label={photo ? "Change photo" : "Upload photo"} accept="image/*" onPick={pickPhoto} />
+              <p className="mt-2 text-xs text-slate-500">A clear, front-facing photo works best.</p>
+              <FieldError msg={errors.photo} />
+            </div>
+          </div>
+        </Section>
+
+        <Section title="Payment">
+          {settings.payment_instructions && <p className="whitespace-pre-line text-sm text-slate-300">{settings.payment_instructions}</p>}
+          {payments.length > 0 && (
+            <>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {payments.map((p) => (
+                  <PaymentCard key={p.payload} payment={p} />
+                ))}
+              </div>
+              <p className="text-xs text-slate-400">
+                Paying from this phone? Tap <b>Download QR</b>, then in your UPI app (GPay, PhonePe, Paytm…) tap <i>Scan QR</i> and
+                pick the image from your gallery. Or tap <b>Copy</b> and pay to that{" "}
+                {payments.every((p) => p.phone) ? "number" : "number or UPI ID"}.
+              </p>
+            </>
+          )}
+          <div data-error={!!errors.receipt}>
+            <p className="mb-2 text-sm font-medium text-slate-300">
+              Payment screenshot or receipt{settings.receipt_required ? "" : " (optional)"}
+            </p>
+            <FileButton label={receipt ? "Change receipt" : "Upload receipt"} accept="image/*,application/pdf" onPick={pickReceipt} />
+            {receipt && <p className="mt-2 text-xs text-emerald-300">✓ Receipt attached</p>}
+            <FieldError msg={errors.receipt} />
+          </div>
+        </Section>
+
+        <Section title="Undertaking and Declaration">
+          <div
+            tabIndex={0}
+            aria-label="Undertaking and Declaration"
+            className="max-h-80 overflow-y-auto whitespace-pre-line rounded-xl bg-slate-950 p-3 text-sm leading-relaxed text-slate-300 ring-1 ring-white/10"
+          >
+            {settings.declaration_text}
+          </div>
+          {settings.rulebook_url && (
+            <p className="text-sm text-slate-400">
+              Rule Book:{" "}
+              <a href={settings.rulebook_url} target="_blank" rel="noopener noreferrer" className="font-semibold text-amber-300 underline">
+                open it here ↗
+              </a>
+            </p>
+          )}
+          <label
+            data-error={!!errors.declaration}
+            className={cn(
+              "flex items-start gap-3 rounded-xl p-3 ring-1",
+              values.declaration === "yes" ? "bg-emerald-500/10 ring-emerald-500/40" : "bg-slate-950 ring-white/15",
+            )}
+          >
+            <input
+              type="checkbox"
+              className="mt-0.5 h-5 w-5 shrink-0 accent-amber-400"
+              checked={values.declaration === "yes"}
+              onChange={(e) => set("declaration", e.target.checked ? "yes" : "")}
+            />
+            <span className="text-sm font-semibold">I have read and agree to the Undertaking and Declaration</span>
+          </label>
+          <FieldError msg={errors.declaration} />
+        </Section>
+
+        {serverError && <p role="alert" className="rounded-xl bg-rose-950 p-3 text-sm text-rose-200">{serverError}</p>}
+        <Button type="submit" variant="primary" size="lg" className="w-full" busy={submitting} disabled={values.declaration !== "yes"}>
+          {submitting ? "Submitting…" : "Submit registration"}
+        </Button>
+        {values.declaration !== "yes" && (
+          <p className="-mt-2 text-center text-xs text-slate-500">Tick &ldquo;I have read and agree&rdquo; above to submit.</p>
+        )}
+      </form>
+    </FormFrame>
+  );
+}
+
+/** Page frame for the standalone form: a colour band at the top, like a Google Form. */
+function FormFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-dvh bg-slate-950 pb-[calc(env(safe-area-inset-bottom)+2.5rem)]">
+      <div
+        aria-hidden
+        className="h-32 bg-gradient-to-br from-amber-300 via-amber-500 to-orange-600 pt-[env(safe-area-inset-top)] sm:h-40"
+      />
+      <main className="mx-auto -mt-20 max-w-xl px-4 sm:-mt-24">{children}</main>
+      <p className="mt-8 text-center text-xs text-slate-600">
+        {APP_NAME} ·{" "}
+        <a href="/privacy" className="underline">
+          Privacy
+        </a>
+      </p>
+    </div>
+  );
+}
+
+function TitleCard({ title, children }: { title: string; children?: React.ReactNode }) {
+  return (
+    <header className="overflow-hidden rounded-2xl bg-slate-900 shadow-2xl ring-1 ring-white/10">
+      <div className="h-2 bg-amber-400" aria-hidden />
+      <div className="p-5 sm:p-6">
+        <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-amber-300">
+          <img src="/icons/icon-192.png" alt="" className="h-6 w-6 rounded-md" />
+          {APP_NAME}
+        </p>
+        <h1 className="mt-2 text-2xl font-extrabold leading-tight sm:text-3xl">{title}</h1>
+        {children}
+      </div>
+    </header>
   );
 }
 

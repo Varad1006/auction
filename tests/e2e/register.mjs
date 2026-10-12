@@ -113,8 +113,17 @@ page.on("pageerror", (e) => {
   console.log(`  page error: ${e.message}`);
   failures++;
 });
+const sockets = [];
+page.on("websocket", (ws) => sockets.push(ws.url()));
 await page.goto(`${APP}/register`);
 await page.getByRole("heading", { name: /Registration/ }).waitFor();
+await page.waitForTimeout(1500);
+check(
+  (await page.getByRole("link", { name: /^(Overview|Live|Players|Teams|Results)$/ }).count()) === 0 &&
+    (await page.getByRole("button", { name: /Sign in/ }).count()) === 0,
+  "the form stands alone: no app tabs or sign-in",
+);
+check(sockets.length === 0, `the form opens no live connection (${sockets.length})`);
 check((await page.getByRole("link", { name: /Rule Book before registering/ }).getAttribute("href")) === "https://example.com/rulebook", "rulebook link and message are shown");
 check((await page.getByRole("img", { name: "UPI QR code for Test Payee" }).count()) === 1, "payment QR code is drawn on the form");
 check(
