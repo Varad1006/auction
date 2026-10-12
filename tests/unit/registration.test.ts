@@ -79,9 +79,31 @@ describe("registration field rules", () => {
   it("rejects digits in names, odd flat numbers and non-numeric ages", () => {
     expect(message({ full_name: "R0han" })).toBe("Use letters only in your name");
     expect(message({ full_name: "Anne-Marie D'Souza" })).toBeNull();
-    expect(message({ flat_number: "#12" })).toBe("Use letters, numbers, - or / (e.g. B-1203)");
-    expect(message({ flat_number: "C/404" })).toBeNull();
     expect(message({ age: "29.5" })).toBe("Enter your age in years");
-    expect(message({ age: "150" })).toBe("Enter a valid age");
+  });
+
+  it("allows ages 18 to 60 only", () => {
+    expect(message({ age: "17" })).toBe("Age must be between 18 and 60");
+    expect(message({ age: "18" })).toBeNull();
+    expect(message({ age: "60" })).toBeNull();
+    expect(message({ age: "61" })).toBe("Age must be between 18 and 60");
+  });
+
+  it("needs the flat as building-flat and fixes common slips", () => {
+    const flat = (v: string) => {
+      const r = parse({ flat_number: v });
+      return r.success ? r.data.flat_number : r.error.issues[0]?.message;
+    };
+    const bad = "Use building number - flat number, e.g. B-1203";
+    expect(flat("B-1203")).toBe("B-1203");
+    expect(flat("b 1203")).toBe("B-1203");
+    expect(flat("B/1203")).toBe("B-1203");
+    expect(flat("b1203")).toBe("B-1203");
+    expect(flat("2-504")).toBe("2-504");
+    expect(flat("A1 - 504")).toBe("A1-504");
+    expect(flat("1203")).toBe(bad);
+    expect(flat("B-12-03")).toBe(bad);
+    expect(flat("#12")).toBe(bad);
+    expect(flat("")).toBe("Enter your flat number");
   });
 });

@@ -74,6 +74,34 @@ export function formatMobile(digits: string): string {
   return /^\d{10}$/.test(digits) ? `${digits.slice(0, 5)} ${digits.slice(5)}` : digits;
 }
 
+export const AGE_MIN = 18;
+export const AGE_MAX = 60;
+const AGE_MESSAGE = `Age must be between ${AGE_MIN} and ${AGE_MAX}`;
+
+/** Building-flat, e.g. "b 1203", "B/1203" or "b1203" -> "B-1203". */
+export function normalizeFlat(raw: string): string {
+  let v = raw
+    .trim()
+    .toUpperCase()
+    .replace(/[\s/_.\\]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-|-$/g, "");
+  const joined = /^([A-Z]{1,2})(\d{1,5})$/.exec(v);
+  if (joined) v = `${joined[1]}-${joined[2]}`;
+  return v;
+}
+
+/** As the flat number is typed: capitals, digits and one hyphen between parts. */
+export function typingFlat(raw: string): string {
+  return raw
+    .toUpperCase()
+    .replace(/[\s/_.\\]+/g, "-")
+    .replace(/[^A-Z0-9-]/g, "")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-/, "")
+    .slice(0, 10);
+}
+
 export const mobileNumber = z
   .string()
   .transform(normalizeMobile)
@@ -108,20 +136,19 @@ export const registrationFields = z.object({
   phone: mobileNumber,
   flat_number: z
     .string()
-    .transform((v) => v.trim().toUpperCase().replace(/\s+/g, " "))
+    .transform(normalizeFlat)
     .pipe(
       z
         .string()
         .min(1, "Enter your flat number")
-        .max(30, "Flat number is too long")
-        .regex(/^[A-Z0-9][A-Z0-9 /-]*$/, "Use letters, numbers, - or / (e.g. B-1203)"),
+        .regex(/^[A-Z0-9]{1,4}-[A-Z0-9]{1,5}$/, "Use building number - flat number, e.g. B-1203"),
     ),
   age: z
     .string()
     .trim()
     .regex(/^\d{1,3}$/, "Enter your age in years")
     .transform(Number)
-    .pipe(z.number().min(5, "Enter a valid age").max(100, "Enter a valid age")),
+    .pipe(z.number().min(AGE_MIN, AGE_MESSAGE).max(AGE_MAX, AGE_MESSAGE)),
   gender: z.enum(["men", "women"], { message: "Choose Male or Female" }),
   role: z.enum(PLAYER_ROLES, { message: "Choose your playing role" }),
   batting_style: z.enum(BATTING_STYLES as [string, ...string[]], { message: "Choose your batting style" }),

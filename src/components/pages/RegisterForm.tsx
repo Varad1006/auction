@@ -14,8 +14,12 @@ import {
   TSHIRT_SIZES,
   type PaymentOption,
   type RegistrationSettings,
+  AGE_MAX,
+  AGE_MIN,
   formatMobile,
+  normalizeFlat,
   normalizeMobile,
+  typingFlat,
   typingMobile,
 } from "@/lib/registration";
 import { isIOS } from "@/lib/platform";
@@ -245,10 +249,12 @@ export function RegisterForm({ settings, payments }: { settings: RegistrationSet
             <Input
               label="Flat number"
               name="flat_number"
-              placeholder="e.g. B-1203"
+              placeholder="B-1203"
               autoCapitalize="characters"
-              maxLength={30}
-              clean={(v) => v.toUpperCase()}
+              autoComplete="off"
+              hint={"Building-flat, e.g.\u00a0B\u20111203"}
+              clean={typingFlat}
+              onBlur={() => values.flat_number && set("flat_number", normalizeFlat(values.flat_number))}
               values={values}
               errors={errors}
               set={set}
@@ -259,7 +265,8 @@ export function RegisterForm({ settings, payments }: { settings: RegistrationSet
               type="text"
               inputMode="numeric"
               placeholder="Years"
-              clean={(v) => v.replace(/\D/g, "").slice(0, 3)}
+              hint={`${AGE_MIN} to ${AGE_MAX} years`}
+              clean={(v) => v.replace(/\D/g, "").slice(0, 2)}
               values={values}
               errors={errors}
               set={set}
@@ -601,7 +608,7 @@ function Input({
       ) : (
         input
       )}
-      {hint && !errors[name] && <span className="mt-1 block text-xs text-slate-500">{hint}</span>}
+      {hint && <span className="mt-1 block text-xs text-slate-500">{hint}</span>}
       <FieldError msg={errors[name]} />
     </label>
   );
