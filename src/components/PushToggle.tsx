@@ -4,22 +4,34 @@ import { useEffect, useState } from "react";
 import { ApiError, callAction } from "@/lib/api";
 import { cn } from "@/lib/format";
 import { disablePush, enablePush, pushStatus, type PushStatus } from "@/lib/push-client";
-import { Button } from "../ui";
-import { useToast } from "../Toast";
-import { useWishlist } from "./WishlistProvider";
+import { useToast } from "./Toast";
+import { Button } from "./ui";
 
-const TEXT: Record<PushStatus, string> = {
-  on: "This device gets a notification when a player on your wishlist comes up — even when the app is closed.",
-  off: "Get a notification on this device when a player on your wishlist comes up, even when the app is closed.",
+const TEXT: Record<Exclude<PushStatus, "on" | "off">, string> = {
   denied: "Notifications are blocked for this site. Allow them in your browser or phone settings, then reload.",
   "needs-install":
     "On iPhone, notifications only work in the installed app: tap Share (□↑) → Add to Home Screen, open the app from your home screen, sign in and turn alerts on there.",
   unsupported: "This browser can't receive notifications. The in-app chime still works while the app is open.",
 };
 
-/** Turns wishlist push notifications on/off for this device. */
-export function PushToggle() {
-  const { vapidPublicKey, preview } = useWishlist();
+/**
+ * Turns push notifications on/off for this device: wishlist alerts for
+ * owners, new-registration alerts for admins (the server picks by role).
+ */
+export function PushToggle({
+  vapidPublicKey,
+  title,
+  what,
+  preview,
+}: {
+  vapidPublicKey: string | null;
+  /** e.g. "Wishlist alerts" */
+  title: string;
+  /** What triggers a notification, e.g. "a player on your wishlist comes up". */
+  what: string;
+  /** Admin previewing the owner view: notifications can't be turned on. */
+  preview?: boolean;
+}) {
   const toast = useToast();
   const [status, setStatus] = useState<PushStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -41,8 +53,8 @@ export function PushToggle() {
           🔔
         </span>
         <p className="text-slate-300">
-          <b>Wishlist alerts</b> — owners turn on phone notifications here. Not available in preview; the in-app chime and banner
-          still work.
+          <b>{title}</b> — owners turn on phone notifications here. Not available in preview; the in-app chime and banner still
+          work.
         </p>
       </section>
     );
@@ -73,8 +85,14 @@ export function PushToggle() {
         {status === "on" ? "🔔" : "🔕"}
       </span>
       <div className="min-w-0 flex-1 basis-60">
-        <p className="font-bold">{status === "on" ? "Wishlist alerts are on" : "Wishlist alerts"}</p>
-        <p className="text-sm text-slate-300">{TEXT[status]}</p>
+        <p className="font-bold">{status === "on" ? `${title} are on` : title}</p>
+        <p className="text-sm text-slate-300">
+          {status === "on"
+            ? `This device gets a notification when ${what}, even when the app is closed.`
+            : status === "off"
+              ? `Get a notification on this device when ${what}, even when the app is closed.`
+              : TEXT[status]}
+        </p>
       </div>
       {status === "off" && vapidPublicKey && (
         <Button variant="primary" busy={busy} onClick={() => run(() => enablePush(vapidPublicKey), "Alerts turned on")}>

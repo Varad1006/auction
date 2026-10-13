@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireRole } from "@/server/http";
+import { vapidKeys } from "@/server/push";
 import { REG_BUCKET, registrationSettings } from "@/server/registration";
 import { adminSupabase } from "@/server/supabase";
 
@@ -18,8 +19,12 @@ export async function GET() {
     const signed = await db.storage.from(REG_BUCKET).createSignedUrls(paths, 3600);
     for (const s of signed.data ?? []) if (s.path && s.signedUrl) urls.set(s.path, s.signedUrl);
   }
+  const vapidPublicKey = await vapidKeys(db)
+    .then((k) => k.publicKey)
+    .catch(() => null);
   return NextResponse.json(
     {
+      vapidPublicKey,
       settings: await registrationSettings(db),
       registrations: data.map((r) => ({
         ...r,

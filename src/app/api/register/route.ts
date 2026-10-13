@@ -1,6 +1,8 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { after, NextResponse, type NextRequest } from "next/server";
 import { PHOTO_MAX_BYTES, PHOTO_TYPES, RECEIPT_MAX_BYTES, RECEIPT_TYPES, registrationFields } from "@/lib/registration";
+import { POOL_LABEL } from "@/lib/types";
 import { isSameOrigin, jsonError } from "@/server/http";
+import { notifyAdmins } from "@/server/push";
 import { EXT, REG_BUCKET, registrationSettings, sniffType } from "@/server/registration";
 import { adminSupabase } from "@/server/supabase";
 
@@ -85,18 +87,39 @@ export async function POST(req: NextRequest) {
   const { declaration: _declaration, final_declaration: _final, ...row } = input;
   void _declaration;
   void _final;
-  const { error } = await db.from("registrations").insert({
-    ...row,
-    additional_info: row.additional_info || null,
-    photo_path: photoPath,
-    receipt_path: receiptPath,
-    declaration: true,
-  });
+  const { data: saved, error } = await db
+    .from("registrations")
+    .insert({
+      ...row,
+      additional_info: row.additional_info || null,
+      photo_path: photoPath,
+      receipt_path: receiptPath,
+      declaration: true,
+    })
+    .select("id")
+    .single();
   if (error) {
     await storage.remove([photoPath, ...(receiptPath ? [receiptPath] : [])]);
     if (error.code === "23505") return jsonError(409, "duplicate", "This email has already registered.");
     console.error("Registration insert failed", error);
     return jsonError(500, "internal", "Could not save your registration, please try again");
   }
+
+  // Ping the admins' phones after the response, so the player doesn't wait.
+  const origin = req.headers.get("origin") ?? req.nextUrl.origin;
+  after(async () => {
+    const { count } = await db.from("registrations").select("id", { count: "exact", head: true }).eq("status", "pending");
+    const waiting = count ?? 1;
+    await notifyAdmins(
+      db,
+      {
+        title: `📝 New registration: ${input.full_name}`,
+        body: `${POOL_LABEL[input.gender]} · ${input.role} · ${input.age} yrs — ${waiting} waiting for your approval`,
+        tag: `registration-${saved.id}`,
+        url: "/admin/registrations",
+      },
+      origin,
+    ).catch((e) => console.error("Admin notification failed", e));
+  });
   return NextResponse.json({ ok: true });
 }

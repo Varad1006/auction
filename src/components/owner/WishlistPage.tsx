@@ -26,7 +26,7 @@ import { useAuction } from "../live/useAuction";
 import { useRevealedPlayer } from "../live/useRevealedPlayer";
 import { useMe } from "../MeProvider";
 import { inputClass } from "../ui";
-import { PushToggle } from "./PushToggle";
+import { PushToggle } from "../PushToggle";
 import { useWishlist } from "./WishlistProvider";
 import { WishlistStar } from "./WishlistStar";
 
@@ -153,7 +153,12 @@ function OwnerWishlist({ teamId }: { teamId: string }) {
         </div>
       </div>
 
-      <PushToggle />
+      <PushToggle
+        vapidPublicKey={wishlist.vapidPublicKey}
+        preview={wishlist.preview}
+        title="Wishlist alerts"
+        what="a player on your wishlist comes up"
+      />
 
       {revealedId && playerById.get(revealedId) && <BlockIntel player={playerById.get(revealedId)!} teamId={teamId} />}
 

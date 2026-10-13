@@ -1,7 +1,10 @@
 // End-to-end test of the registration form against a running app + local
 // Supabase (same setup as smoke.mjs). Screenshots go to $SHOTS.
 import { createServerClient } from "@supabase/ssr";
+import ece from "http_ece";
+import { createECDH, randomBytes } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import jsQR from "jsqr";
 import { chromium, devices } from "playwright";
 import sharp from "sharp";
@@ -32,14 +35,44 @@ async function sessionCookies(email) {
 }
 const cookieHeader = (c) => c.map((x) => `${x.name}=${x.value}`).join("; ");
 const admin = await sessionCookies("admin@test.local");
-const act = async (action, body) => {
+const actAs = async (cookies, action, body) => {
   const res = await fetch(`${APP}/api/actions/${action}`, {
     method: "POST",
-    headers: { "content-type": "application/json", origin: APP, cookie: cookieHeader(admin) },
+    headers: { "content-type": "application/json", origin: APP, cookie: cookieHeader(cookies) },
     body: JSON.stringify(body),
   });
   return { status: res.status, body: await res.json().catch(() => null) };
 };
+const act = (action, body) => actAs(admin, action, body);
+
+// A fake push service on localhost (the app runs with PUSH_ALLOW_LOCALHOST=1).
+const pushes = [];
+const pushServer = createServer((req, res) => {
+  const chunks = [];
+  req.on("data", (c) => chunks.push(c));
+  req.on("end", () => {
+    pushes.push({ path: req.url, body: Buffer.concat(chunks) });
+    res.writeHead(201).end();
+  });
+});
+await new Promise((r) => pushServer.listen(0, "127.0.0.1", r));
+function device(name) {
+  const ecdh = createECDH("prime256v1");
+  ecdh.generateKeys();
+  const auth = randomBytes(16).toString("base64url");
+  const sub = { endpoint: `http://127.0.0.1:${pushServer.address().port}/push/${name}`, keys: { p256dh: ecdh.getPublicKey().toString("base64url"), auth } };
+  const read = (p) => JSON.parse(ece.decrypt(p.body, { version: "aes128gcm", privateKey: ecdh, authSecret: auth }).toString());
+  return { sub, read };
+}
+async function nextPush(path, timeout = 10000) {
+  const until = Date.now() + timeout;
+  while (Date.now() < until) {
+    const i = pushes.findIndex((p) => p.path === path);
+    if (i !== -1) return pushes.splice(i, 1)[0];
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return null;
+}
 const settings = (is_open) =>
   act("registration.settings", {
     is_open,
@@ -108,6 +141,16 @@ check(plainFlat.status === 400 && plainFlat.body?.message === "Use building numb
 const digitName = await post({ ...fields, full_name: "R0han" }, files);
 check(digitName.status === 400, "names can't contain digits");
 const owner = await sessionCookies("owner1@test.local");
+
+console.log("Admin alerts");
+const adminPhone = device("admin");
+const ownerPhone = device("owner");
+check((await act("push.subscribe", adminPhone.sub)).status === 200, "admin turns on new-registration alerts");
+check((await actAs(owner, "push.subscribe", ownerPhone.sub)).status === 200, "an owner has wishlist alerts on");
+check((await actAs(await sessionCookies("stranger@test.local"), "push.subscribe", device("x").sub)).status === 403, "signed-in viewers can't subscribe");
+check((await act("push.test", {})).status === 200, "admin can send a test alert");
+const adminTest = await nextPush("/push/admin");
+check(adminTest && /registration form/.test(adminPhone.read(adminTest).body), "the admin test alert talks about registrations");
 const ownerList = await fetch(`${APP}/api/admin/registrations`, { headers: { cookie: cookieHeader(owner) } });
 check(ownerList.status === 403, "owners cannot list registrations");
 const rest = await fetch(`${SB_URL}/rest/v1/registrations?select=email`, { headers: { apikey: ANON, authorization: `Bearer ${ANON}` } });
@@ -200,6 +243,13 @@ await page.screenshot({ path: `${SHOTS}/r-01-form.png`, fullPage: true });
 await page.getByRole("button", { name: "Submit registration" }).click();
 await page.getByText("You're registered!").waitFor({ timeout: 15000 });
 check(true, "form submits and shows the confirmation");
+const regPush = await nextPush("/push/admin");
+const regMsg = regPush && adminPhone.read(regPush);
+check(
+  regMsg?.title === "📝 New registration: Rohan Patil" && /Men · All-rounder · 29 yrs — \d+ waiting for your approval/.test(regMsg.body) && regMsg.url === "/admin/registrations",
+  `the admin's phone is told about the new registration (${regMsg?.title} | ${regMsg?.body})`,
+);
+check(pushes.filter((p) => p.path === "/push/owner").length === 0, "owners don't get registration alerts");
 await page.screenshot({ path: `${SHOTS}/r-02-done.png` });
 
 const dup = await post({ ...fields, email }, files);
@@ -253,6 +303,9 @@ const after = await (await fetch(`${APP}/api/admin/registrations`, { headers: { 
 check(cleaned.status === 200 && after.registrations.length === 0, `admin deletes all registrations (${cleaned.body?.data?.registrations ?? cleaned.body?.message})`);
 check((await (await fetch(`${SB_URL}/rest/v1/players?select=id&limit=1`, { headers: { apikey: ANON, authorization: `Bearer ${ANON}` } })).json()).length === 1, "players are kept when only registrations are cleared");
 await act("registration.payments", { items: [] });
+await act("push.unsubscribe", { endpoint: adminPhone.sub.endpoint });
+await actAs(owner, "push.unsubscribe", { endpoint: ownerPhone.sub.endpoint });
+pushServer.close();
 
 console.log(failures ? `\n${failures} check(s) failed` : "\nAll checks passed");
 process.exit(failures ? 1 : 0);

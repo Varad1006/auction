@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { callAction } from "@/lib/api";
 import { cn, timeAgo } from "@/lib/format";
+import { syncPush } from "@/lib/push-client";
 import { decodeQrImage } from "@/lib/qr-decode";
 import { DECLARATION_MAX, FINAL_DECLARATION_MAX, PAYMENT_QR_MAX, parseUpi, upiLink, type PaymentQr, type RegistrationSettings } from "@/lib/registration";
 import { POOL_LABEL, type Pool } from "@/lib/types";
+import { PushToggle } from "../PushToggle";
 import { Button, Card, Field, inputBase, inputClass, useRunner } from "../ui";
 
 interface Registration {
@@ -32,10 +34,12 @@ interface Registration {
 type Filter = "pending" | "approved" | "rejected" | "all";
 
 export function RegistrationsManager() {
-  const [data, setData] = useState<{ settings: RegistrationSettings; registrations: Registration[] } | null>(null);
+  const [data, setData] = useState<{
+    settings: RegistrationSettings;
+    registrations: Registration[];
+    vapidPublicKey: string | null;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<Filter>("pending");
-  const { busy, run } = useRunner();
 
   const load = useCallback(async () => {
     const res = await fetch("/api/admin/registrations", { cache: "no-store" }).catch(() => null);
@@ -59,6 +63,23 @@ export function RegistrationsManager() {
 
   if (error) return <p className="text-rose-300">{error}</p>;
   if (!data) return <p className="text-slate-400">Loading…</p>;
+  return <Registrations data={data} load={load} />;
+}
+
+function Registrations({
+  data,
+  load,
+}: {
+  data: { settings: RegistrationSettings; registrations: Registration[]; vapidPublicKey: string | null };
+  load: () => Promise<void>;
+}) {
+  const [filter, setFilter] = useState<Filter>("pending");
+  const { busy, run } = useRunner();
+  // Keep this device's notification subscription registered with the server.
+  const key = data.vapidPublicKey;
+  useEffect(() => {
+    if (key) void syncPush(key).catch(() => {});
+  }, [key]);
 
   const regs = data.registrations;
   const count = (f: Filter) => (f === "all" ? regs.length : regs.filter((r) => r.status === f).length);
@@ -73,6 +94,7 @@ export function RegistrationsManager() {
 
   return (
     <div className="space-y-4">
+      <PushToggle vapidPublicKey={data.vapidPublicKey} title="New registration alerts" what="someone submits the registration form" />
       <FormSettings key={JSON.stringify(data.settings)} settings={data.settings} onSaved={load} />
       <PaymentsEditor key={`pay-${JSON.stringify(data.settings.payment_qr)}`} initial={data.settings.payment_qr} onSaved={load} />
 

@@ -591,8 +591,9 @@ export const actions = {
   }),
 
   // ---- Push notifications (owners) -------------------------------------------
+  // Owners get wishlist alerts, admins get "new registration" alerts.
   "push.subscribe": action({
-    roles: ["owner"],
+    roles: ["owner", "admin"],
     input: z.object({
       endpoint: z.string().max(1000),
       keys: z.object({ p256dh: z.string().min(1).max(200), auth: z.string().min(1).max(100) }),
@@ -602,14 +603,14 @@ export const actions = {
       await must(
         db
           .from("push_subscriptions")
-          .upsert({ endpoint: i.endpoint, email: me.email, p256dh: i.keys.p256dh, auth: i.keys.auth })
+          .upsert({ endpoint: i.endpoint, email: me.email, role: me.role, p256dh: i.keys.p256dh, auth: i.keys.auth })
           .select("endpoint"),
       );
       return null;
     },
   }),
   "push.unsubscribe": action({
-    roles: ["owner"],
+    roles: ["owner", "admin"],
     input: z.object({ endpoint: z.string().max(1000) }),
     run: async ({ me, db }, i) => {
       await must(db.from("push_subscriptions").delete().eq("endpoint", i.endpoint).eq("email", me.email).select("endpoint"));
@@ -617,10 +618,10 @@ export const actions = {
     },
   }),
   "push.test": action({
-    roles: ["owner"],
+    roles: ["owner", "admin"],
     input: z.object({}),
     run: async ({ me, db, origin }) => {
-      const sent = await sendTestPush(db, me.email, origin);
+      const sent = await sendTestPush(db, me.email, me.role === "admin" ? "admin" : "owner", origin);
       if (!sent) throw new ActionError(409, "not_subscribed", "Notifications aren't turned on for this account yet");
       return { sent };
     },
@@ -647,6 +648,8 @@ export const actions = {
     input: z.object({ email }),
     run: async ({ me, db }, i) => {
       await must(db.from("owners").delete().eq("email", i.email).select("email"));
+      // Their phones stop getting wishlist alerts.
+      await db.from("push_subscriptions").delete().eq("email", i.email).eq("role", "owner");
       await audit(db, me.email, "owner_delete", { email: i.email });
       return null;
     },

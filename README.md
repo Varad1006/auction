@@ -104,7 +104,7 @@ enough for this event (see [Limits](#limits)).
    `xltgjnmeccyzncstgtlv`).
 2. **Create the database schema**, using one of these:
    - **SQL Editor** (simplest): open **SQL Editor → New query**, then paste
-     and **Run** each file in `supabase/migrations/`, in filename order (10
+     and **Run** each file in `supabase/migrations/`, in filename order (11
      files).
    - **Script over HTTPS:** create a personal access token (avatar →
      **Account preferences → Access Tokens**), then run
@@ -182,6 +182,10 @@ payment instructions, availability options (e.g. match dates), the undertaking &
 (photo and receipt links), pick a grade and **Approve** to add them to the auction pool with their
 photo, availability and notes on the player card. **CSV** exports everything (useful for T-shirt
 orders).
+
+**New registration alerts:** at the top of **Admin → Registrations**, tap **Turn on alerts** on
+your phone (on iPhone, in the installed app). Every admin who does this gets a notification with
+the person's name and how many registrations are waiting; tapping it opens the Registrations page.
 
 **Payment QR codes:** under *Payment QR codes*, upload a screenshot or photo of each UPI QR code
 (or type a UPI ID), and optionally the payee's phone number. The app reads the payment link inside

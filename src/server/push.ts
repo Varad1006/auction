@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import webpush from "web-push";
 import { money } from "@/lib/format";
 import { PRIORITY_LABEL } from "@/lib/wishlist";
+import { adminEmails } from "./auth";
 
 // Web Push for owner wishlists. The VAPID key pair is generated on first use
 // and kept in the private app_secrets table, so there is nothing to set up.
@@ -73,15 +74,26 @@ interface Subscription {
   auth: string;
 }
 
+interface SendOptions {
+  /** Seconds the push service keeps trying an offline device. */
+  ttl: number;
+  urgency: "high" | "normal";
+  /** A newer message with the same topic replaces an undelivered older one. */
+  topic: string;
+}
+
+// Only useful while the player is on the block.
+const WISHLIST_PUSH: SendOptions = { ttl: 300, urgency: "high", topic: "wishlist" };
+// Still worth seeing hours later; an offline phone just gets the latest.
+const ADMIN_PUSH: SendOptions = { ttl: 24 * 3600, urgency: "normal", topic: "registrations" };
+
 /** Sends one message; returns false when the subscription is gone for good. */
-async function send(sub: Subscription, msg: PushMessage, keys: VapidKeys, subject: string): Promise<boolean> {
+async function send(sub: Subscription, msg: PushMessage, keys: VapidKeys, subject: string, opts: SendOptions): Promise<boolean> {
   const req = webpush.generateRequestDetails({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, JSON.stringify(msg), {
     vapidDetails: { subject, ...keys },
-    // Only useful while the player is on the block.
-    TTL: 300,
-    urgency: "high",
-    // A newer wishlist alert replaces an undelivered older one.
-    topic: "wishlist",
+    TTL: opts.ttl,
+    urgency: opts.urgency,
+    topic: opts.topic,
   });
   const res = await fetch(req.endpoint, {
     method: req.method,
@@ -100,7 +112,12 @@ function subjectFor(origin: string): string {
 }
 
 /** Sends each subscription its message and forgets the ones that expired. */
-async function deliver(db: SupabaseClient, jobs: { sub: Subscription; msg: PushMessage }[], origin: string): Promise<number> {
+async function deliver(
+  db: SupabaseClient,
+  jobs: { sub: Subscription; msg: PushMessage }[],
+  origin: string,
+  opts: SendOptions,
+): Promise<number> {
   if (!jobs.length) return 0;
   const keys = await vapidKeys(db);
   const subject = subjectFor(origin);
@@ -110,7 +127,7 @@ async function deliver(db: SupabaseClient, jobs: { sub: Subscription; msg: PushM
     jobs.map(async ({ sub, msg }) => {
       if (!isPushEndpoint(sub.endpoint)) return;
       try {
-        if (await send(sub, msg, keys, subject)) sent++;
+        if (await send(sub, msg, keys, subject, opts)) sent++;
         else gone.push(sub.endpoint);
       } catch (e) {
         console.warn("Push failed", e instanceof Error ? e.message : e);
@@ -144,6 +161,7 @@ export async function notifyWishlist(db: SupabaseClient, playerId: string, origi
   const { data: subs } = await db
     .from("push_subscriptions")
     .select("endpoint, email, p256dh, auth")
+    .eq("role", "owner")
     .in(
       "email",
       owners.map((o) => o.email),
@@ -162,21 +180,41 @@ export async function notifyWishlist(db: SupabaseClient, playerId: string, origi
     };
     return [{ sub, msg }];
   });
-  return deliver(db, jobs, origin);
+  return deliver(db, jobs, origin, WISHLIST_PUSH);
 }
 
-/** Sends a test notification to every device of one owner. */
-export async function sendTestPush(db: SupabaseClient, email: string, origin: string): Promise<number> {
-  const { data: subs } = await db.from("push_subscriptions").select("endpoint, p256dh, auth").eq("email", email);
+/**
+ * Tells every admin's devices about something waiting for them, e.g. a new
+ * registration. Only people still listed in ADMIN_EMAILS get it.
+ */
+export async function notifyAdmins(db: SupabaseClient, msg: PushMessage, origin: string): Promise<number> {
+  const admins = [...adminEmails()];
+  if (!admins.length) return 0;
+  const { data: subs } = await db.from("push_subscriptions").select("endpoint, p256dh, auth").eq("role", "admin").in("email", admins);
+  return deliver(
+    db,
+    (subs ?? []).map((sub) => ({ sub, msg })),
+    origin,
+    ADMIN_PUSH,
+  );
+}
+
+/** Sends a test notification to every device of one person. */
+export async function sendTestPush(db: SupabaseClient, email: string, role: "owner" | "admin", origin: string): Promise<number> {
+  const { data: subs } = await db.from("push_subscriptions").select("endpoint, p256dh, auth").eq("email", email).eq("role", role);
   const msg: PushMessage = {
     title: "🔔 Notifications are on",
-    body: "You'll get an alert like this when a player on your wishlist comes up.",
+    body:
+      role === "admin"
+        ? "You'll get an alert like this when someone submits the registration form."
+        : "You'll get an alert like this when a player on your wishlist comes up.",
     tag: "test",
-    url: "/wishlist",
+    url: role === "admin" ? "/admin/registrations" : "/wishlist",
   };
   return deliver(
     db,
     (subs ?? []).map((sub) => ({ sub, msg })),
     origin,
+    role === "admin" ? ADMIN_PUSH : WISHLIST_PUSH,
   );
 }
