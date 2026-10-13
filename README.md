@@ -1,6 +1,6 @@
 # Cricket Auction
 
-A live player-auction app for a college cricket tournament: 6 teams, separate
+A live player-auction app for a cricket tournament (built for PPL – Pebbles2 Premier League): 6 teams, separate
 men's and women's pools, a spin-the-wheel draw, real-time bidding from owners'
 phones, and a public live view for everyone else. Installable as a PWA.
 
@@ -150,7 +150,8 @@ enough for this event (see [Limits](#limits)).
    | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | anon / publishable key |
    | `SUPABASE_SERVICE_ROLE_KEY` | service_role / secret key (**server only**) |
    | `ADMIN_EMAILS` | your Gmail address(es), comma-separated |
-   | `NEXT_PUBLIC_APP_NAME` | optional, e.g. `XYZ College Premier League` |
+   | `NEXT_PUBLIC_APP_NAME` | optional, e.g. `PPL Auction` |
+   | `NEXT_PUBLIC_APP_DESCRIPTION` | optional, shown in link previews (default: "Live player auction for PPL – Pebbles2 Premier League") |
    | `NEXT_PUBLIC_CURRENCY_LABEL` | optional, default `pts` |
 
 3. Deploy. Then put the production URL into Supabase's Site URL and Redirect

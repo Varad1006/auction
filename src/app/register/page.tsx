@@ -1,12 +1,24 @@
+import type { Metadata } from "next";
 import QRCode from "qrcode";
+import { cache } from "react";
 import { RegisterForm } from "@/components/pages/RegisterForm";
-import { isConfigured } from "@/lib/env";
+import { APP_DESCRIPTION, isConfigured } from "@/lib/env";
 import { capacityFor, parseUpi, spotsTaken, type PaymentOption, type RegistrationSettings, type Spots } from "@/lib/registration";
 import { DEFAULT_SETTINGS, registrationQueue, registrationSettings } from "@/server/registration";
 import { adminSupabase } from "@/server/supabase";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Player registration" };
+
+// Loaded once per request for both the link preview and the page.
+const loadSettings = cache(() =>
+  isConfigured ? registrationSettings(adminSupabase()).catch(() => DEFAULT_SETTINGS) : Promise.resolve(DEFAULT_SETTINGS),
+);
+
+// A shared /register link previews with the form's own title.
+export async function generateMetadata(): Promise<Metadata> {
+  const { title } = await loadSettings();
+  return { title: { absolute: title }, openGraph: { title, description: APP_DESCRIPTION } };
+}
 
 /** Draws each payment QR code as a crisp SVG from its UPI link. */
 async function paymentOptions(settings: RegistrationSettings): Promise<PaymentOption[]> {
@@ -35,7 +47,7 @@ async function spotsLeft(settings: RegistrationSettings): Promise<Spots> {
 }
 
 export default async function Register() {
-  const settings = isConfigured ? await registrationSettings(adminSupabase()).catch(() => DEFAULT_SETTINGS) : DEFAULT_SETTINGS;
+  const settings = await loadSettings();
   const spots = isConfigured && settings.is_open ? await spotsLeft(settings) : {};
   return <RegisterForm settings={settings} payments={await paymentOptions(settings)} spots={spots} />;
 }

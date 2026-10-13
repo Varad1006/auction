@@ -1,11 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import { Providers } from "@/components/Providers";
-import { APP_NAME } from "@/lib/env";
+import { APP_DESCRIPTION, APP_NAME } from "@/lib/env";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: { default: APP_NAME, template: `%s · ${APP_NAME}` },
-  description: "Live player auction for the college cricket tournament",
+  description: APP_DESCRIPTION,
+  // Link previews in WhatsApp and other apps.
+  openGraph: { type: "website", siteName: APP_NAME, title: APP_NAME, description: APP_DESCRIPTION },
   applicationName: APP_NAME,
   appleWebApp: { capable: true, title: APP_NAME, statusBarStyle: "black-translucent" },
   icons: {

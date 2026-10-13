@@ -1,12 +1,12 @@
 import type { MetadataRoute } from "next";
-import { APP_NAME } from "@/lib/env";
+import { APP_DESCRIPTION, APP_NAME } from "@/lib/env";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
     name: APP_NAME,
     short_name: APP_NAME.length > 12 ? "Auction" : APP_NAME,
-    description: "Live player auction for the college cricket tournament",
+    description: APP_DESCRIPTION,
     start_url: "/",
     scope: "/",
     display: "standalone",

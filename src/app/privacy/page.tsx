@@ -9,7 +9,7 @@ export default function PrivacyPage() {
     <main className="mx-auto max-w-2xl space-y-4 p-6 text-slate-300">
       <h1 className="text-2xl font-extrabold text-white">Privacy policy</h1>
       <p>
-        {APP_NAME} runs the player auction for our college cricket tournament. Watching the auction needs no account.
+        {APP_NAME} runs the player auction for PPL – Pebbles2 Premier League. Watching the auction needs no account.
       </p>
       <h2 className="pt-2 text-lg font-bold text-white">What we collect</h2>
       <p>
