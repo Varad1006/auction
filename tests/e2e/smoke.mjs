@@ -239,8 +239,10 @@ await ownerPage.goto(`${APP}/players?pool=men`);
 await ownerPage.getByRole("button", { name: `Add ${w2.name} to wishlist` }).click();
 await ownerPage.getByRole("button", { name: `Remove ${w2.name} from wishlist` }).waitFor({ timeout: 5000 });
 check(true, "owner stars a player on the Players page");
-await ownerPage.getByRole("link", { name: "★ Wishlist", exact: true }).click();
-await ownerPage.getByRole("heading", { name: "Your wishlist" }).waitFor({ timeout: 10000 });
+await ownerPage.getByRole("link", { name: "★ My team", exact: true }).click();
+await ownerPage.getByText("Team dashboard", { exact: true }).waitFor({ timeout: 10000 });
+check((await ownerPage.getByRole("heading", { level: 1 }).textContent()) === team1.name, "the owner's dashboard is for their own team");
+check((await ownerPage.locator("header").getByText(team1.name, { exact: true }).count()) === 1, "the header shows the owner's team");
 await ownerPage.getByRole("tablist", { name: "Pool" }).getByRole("tab", { name: /^Men/ }).click();
 await ownerPage.getByRole("button", { name: new RegExp(w1.name) }).first().click();
 const maxPrice = w1.base_price + 20;
@@ -253,6 +255,14 @@ check(
   "starred player and max price are saved to the team wishlist",
 );
 await ownerPage.screenshot({ path: `${SHOTS}/10-owner-wishlist.png`, fullPage: true });
+await owner2Page.goto(`${APP}/wishlist`);
+await owner2Page.getByText("Team dashboard", { exact: true }).waitFor({ timeout: 10000 });
+await owner2Page.getByRole("tablist", { name: "Pool" }).getByRole("tab", { name: /^Men/ }).click();
+check(
+  (await owner2Page.getByRole("heading", { level: 1 }).textContent()) === team2.name &&
+    (await owner2Page.getByText(/Wishlist · players to go for 0/).count()) === 1,
+  "another owner sees only their own team's dashboard, without the first team's wishlist",
+);
 
 // Push: a fake push service on localhost receives the encrypted messages.
 const pushes = [];
@@ -337,10 +347,11 @@ const owner2Before = (await (await wishlistOf(owner2)).json()).entries.length;
 await adminPage.goto(`${APP}/wishlist`);
 await adminPage.getByRole("button", { name: `View as ${team2.name}` }).click();
 await adminPage.getByText("Owner view preview").waitFor({ timeout: 5000 });
-await adminPage.getByRole("heading", { name: "Your wishlist" }).waitFor();
+await adminPage.getByText("Team dashboard", { exact: true }).waitFor();
+check((await adminPage.getByRole("heading", { level: 1 }).textContent()) === team2.name, "the preview shows the chosen team");
 await adminPage.getByRole("tablist", { name: "Pool" }).getByRole("tab", { name: /^Men/ }).click();
 await adminPage.getByRole("button", { name: /^Add .* to wishlist$/ }).first().click();
-await adminPage.getByText(/Players to go for 1/).waitFor({ timeout: 5000 });
+await adminPage.getByText(/players to go for 1/).waitFor({ timeout: 5000 });
 check(true, "admin previews a team's owner view and builds a practice wishlist");
 await adminPage.screenshot({ path: `${SHOTS}/13-admin-owner-preview.png`, fullPage: true });
 const owner2After = (await (await wishlistOf(owner2)).json()).entries.length;

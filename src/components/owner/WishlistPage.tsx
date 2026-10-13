@@ -123,19 +123,21 @@ function OwnerWishlist({ teamId }: { teamId: string }) {
   const inPool = (list: WishlistItem[]) => list.filter((i) => i.player.pool === pool);
   const activeHere = inPool(active);
 
-  if (!ready || !wishlist.ready) return <p className="animate-pulse py-16 text-center text-slate-400">Loading your wishlist…</p>;
+  if (!ready || !wishlist.ready) return <p className="animate-pulse py-16 text-center text-slate-400">Loading your team…</p>;
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl font-black tracking-tight">Your wishlist</h1>
+          <p className="text-xs font-bold uppercase tracking-widest text-amber-300">Team dashboard</p>
+          <h1 className="flex items-center gap-2 text-2xl font-black tracking-tight">
+            {team && <span className="h-4 w-4 shrink-0 rounded-full" style={{ background: team.color }} aria-hidden />}
+            <span className="min-w-0 break-words">{team?.name ?? "Your team"}</span>
+          </h1>
           <p className="text-sm text-slate-400">
-            {wishlist.preview ? (
-              <>Preview as {team ? <TeamBadge team={team} /> : "this team"} — a practice list, not the team&apos;s real wishlist.</>
-            ) : (
-              <>Private to {team ? <TeamBadge team={team} /> : "your team"} — other teams can&apos;t see it.</>
-            )}
+            {wishlist.preview
+              ? "Admin preview with a practice wishlist, not the team's real one."
+              : `Only ${team?.name ?? "your team"}'s owners can see this page: your wishlist, max prices, notes and plans.`}
           </p>
         </div>
         <div className="flex rounded-xl bg-white/5 p-1" role="tablist" aria-label="Pool">
@@ -168,7 +170,7 @@ function OwnerWishlist({ teamId }: { teamId: string }) {
 
           <section aria-labelledby="wl-h">
             <h2 id="wl-h" className="mb-2 text-lg font-bold">
-              Players to go for <span className="text-slate-500">{activeHere.length}</span>
+              Wishlist · players to go for <span className="text-slate-500">{activeHere.length}</span>
             </h2>
             {activeHere.length === 0 ? (
               <p className="rounded-xl bg-slate-900 p-5 text-sm text-slate-400 ring-1 ring-white/10">

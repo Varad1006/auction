@@ -65,9 +65,10 @@ export function OwnersManager() {
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
       <Card title="Team owners">
         <p className="mb-4 text-sm text-slate-400">
-          Anyone who signs in with one of these Gmail addresses gets that team&apos;s private wishlist and alerts. Teams can have
-          several owners, who share one wishlist. Bids are entered by the auctioneer.
-          Changes apply on the owner&apos;s next action; no need for them to sign in again.
+          Each Gmail address belongs to one team. When that person signs in with Google they land on their team&apos;s dashboard
+          (wishlist, max prices, notes, plans and alerts) and can&apos;t see any other team&apos;s. A team can have several owners;
+          they share one dashboard. Bids are entered by the auctioneer. Changes apply on the owner&apos;s next page load; no need
+          to sign in again.
         </p>
         <form onSubmit={save} className="mb-5 grid gap-2 sm:grid-cols-[1fr_10rem_auto] sm:items-end">
           <Field label="Gmail address">

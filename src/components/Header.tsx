@@ -15,8 +15,9 @@ const CONNECTION: Record<string, { dot: string; label: string }> = {
 };
 
 export function Header() {
-  const { connection, state, configs } = useLive();
+  const { connection, state, configs, teams } = useLive();
   const { me, signIn, signOut } = useMe();
+  const myTeam = me?.role === "owner" ? teams.find((t) => t.id === me.teamId) : undefined;
   const conn = CONNECTION[connection];
   const pool = state?.current_pool;
 
@@ -50,11 +51,24 @@ export function Header() {
                 ) : (
                   <span className="h-6 w-6 rounded-full bg-slate-600" />
                 )}
-                <span className="text-xs font-semibold capitalize text-slate-300">{me.role}</span>
+                {myTeam ? (
+                  <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-slate-300">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: myTeam.color }} />
+                    <span className="max-w-[7rem] truncate sm:max-w-[10rem]">{myTeam.name}</span>
+                  </span>
+                ) : (
+                  <span className="text-xs font-semibold capitalize text-slate-300">{me.role}</span>
+                )}
               </summary>
               <div className="absolute right-0 mt-2 w-64 rounded-xl bg-slate-900 p-3 text-sm shadow-xl ring-1 ring-white/10">
                 <p className="truncate font-semibold">{me.name ?? me.email}</p>
                 <p className="truncate text-xs text-slate-400">{me.email}</p>
+                {myTeam && (
+                  <Link href="/wishlist" className="mt-2 block rounded-lg bg-amber-400/10 px-2.5 py-2 text-xs ring-1 ring-amber-400/30">
+                    <span className="block text-slate-400">Owner of</span>
+                    <span className="block font-bold text-amber-200">{myTeam.name} → team dashboard</span>
+                  </Link>
+                )}
                 {me.role === "viewer" && (
                   <p className="mt-2 text-xs text-slate-400">
                     {me.notGoogle

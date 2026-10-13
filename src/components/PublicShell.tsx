@@ -20,7 +20,7 @@ const TABS = [
   { href: "/bids", label: "Results" },
 ];
 
-const OWNER_TAB = { href: "/wishlist", label: "★ Wishlist" };
+const OWNER_TAB = { href: "/wishlist", label: "★ My team" };
 
 /** Header, page tabs and (for owners) the wishlist bar, shared by every public page. */
 export function PublicShell({ children }: { children: React.ReactNode }) {

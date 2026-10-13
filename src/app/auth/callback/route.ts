@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { resolveRole } from "@/server/auth";
 import { sessionSupabase } from "@/server/supabase";
 
 export const dynamic = "force-dynamic";
@@ -15,8 +16,16 @@ export async function GET(req: NextRequest) {
   const next = safeNext(url.searchParams.get("next"));
   if (code) {
     const supabase = await sessionSupabase();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) return NextResponse.redirect(new URL(next, url.origin));
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    if (!error) {
+      // Owners who signed in from the home page land on their team dashboard.
+      let to = next;
+      if (next === "/") {
+        const me = await resolveRole(data.user).catch(() => null);
+        if (me?.role === "owner") to = "/wishlist";
+      }
+      return NextResponse.redirect(new URL(to, url.origin));
+    }
     console.error("OAuth code exchange failed", error.message);
   }
   const fail = new URL("/login", url.origin);
