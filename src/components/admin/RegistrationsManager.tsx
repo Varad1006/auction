@@ -26,18 +26,22 @@ interface Registration {
   availability: string | null;
   additional_info: string | null;
   status: "pending" | "approved" | "rejected";
+  /** Place in the waitlist (pending registrations after the pool's spots). */
+  waitlist_position: number | null;
   photo_url: string | null;
   receipt_url: string | null;
   receipt_path: string | null;
 }
 
-type Filter = "pending" | "approved" | "rejected" | "all";
+type Filter = "pending" | "waitlist" | "approved" | "rejected" | "all";
+type SpotCounts = Partial<Record<Pool, { taken: number; capacity: number | null }>>;
 
 export function RegistrationsManager() {
   const [data, setData] = useState<{
     settings: RegistrationSettings;
     registrations: Registration[];
     vapidPublicKey: string | null;
+    spots: SpotCounts;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,7 +74,7 @@ function Registrations({
   data,
   load,
 }: {
-  data: { settings: RegistrationSettings; registrations: Registration[]; vapidPublicKey: string | null };
+  data: { settings: RegistrationSettings; registrations: Registration[]; vapidPublicKey: string | null; spots: SpotCounts };
   load: () => Promise<void>;
 }) {
   const [filter, setFilter] = useState<Filter>("pending");
@@ -82,9 +86,18 @@ function Registrations({
   }, [key]);
 
   const regs = data.registrations;
-  const count = (f: Filter) => (f === "all" ? regs.length : regs.filter((r) => r.status === f).length);
-  const list = filter === "all" ? regs : regs.filter((r) => r.status === filter);
-  const pending = regs.filter((r) => r.status === "pending");
+  const inFilter = (r: Registration, f: Filter) =>
+    f === "all" ||
+    (f === "waitlist" ? r.waitlist_position !== null : r.status === f && !(f === "pending" && r.waitlist_position !== null));
+  const count = (f: Filter) => regs.filter((r) => inFilter(r, f)).length;
+  const list = regs
+    .filter((r) => inFilter(r, filter))
+    // The waitlist reads in queue order.
+    .sort((a, b) =>
+      filter === "waitlist" ? a.gender.localeCompare(b.gender) || (a.waitlist_position ?? 0) - (b.waitlist_position ?? 0) : 0,
+    );
+  // "Approve all" never takes people off the waitlist.
+  const pending = regs.filter((r) => r.status === "pending" && r.waitlist_position === null);
 
   const act = async (key: string, fn: () => Promise<unknown>, msg: string) => {
     const r = await run(key, fn, msg);
@@ -111,7 +124,7 @@ function Registrations({
               disabled={pending.length === 0}
               busy={busy === "all"}
               onClick={async () => {
-                if (!confirm(`Approve all ${pending.length} pending registrations and add them to the player pool?`)) return;
+                if (!confirm(`Approve all ${pending.length} pending registrations (not the waitlist) and add them to the player pool?`)) return;
                 for (const r of pending) await callAction("registration.approve", { id: r.id }).catch(() => null);
                 await act("all", async () => null, "Pending registrations approved");
               }}
@@ -121,8 +134,9 @@ function Registrations({
           </div>
         }
       >
+        <SpotsSummary spots={data.spots} waitlisted={count("waitlist")} />
         <div className="mb-4 flex flex-wrap gap-2">
-          {(["pending", "approved", "rejected", "all"] as Filter[]).map((f) => (
+          {(["pending", "waitlist", "approved", "rejected", "all"] as Filter[]).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
@@ -149,6 +163,27 @@ function Registrations({
   );
 }
 
+/** "Men 64/64 · Women 20/24 · 3 on the waitlist" */
+function SpotsSummary({ spots, waitlisted }: { spots: SpotCounts; waitlisted: number }) {
+  const pools = (["men", "women"] as const).filter((p) => spots[p]);
+  return (
+    <div className="mb-3 flex flex-wrap gap-2 text-sm">
+      {pools.map((p) => {
+        const { taken, capacity } = spots[p]!;
+        const full = capacity !== null && taken >= capacity;
+        return (
+          <span key={p} className={cn("rounded-lg px-2.5 py-1 font-semibold ring-1", full ? "bg-amber-400/10 text-amber-200 ring-amber-400/30" : "bg-white/5 ring-white/10")}>
+            {POOL_LABEL[p]} {capacity === null ? `${taken} registered (no limit)` : `${Math.min(taken, capacity)}/${capacity} spots`}
+          </span>
+        );
+      })}
+      {waitlisted > 0 && (
+        <span className="rounded-lg bg-sky-400/10 px-2.5 py-1 font-semibold text-sky-200 ring-1 ring-sky-400/30">{waitlisted} on the waitlist</span>
+      )}
+    </div>
+  );
+}
+
 function RegistrationRow({
   r,
   busy,
@@ -170,13 +205,19 @@ function RegistrationRow({
       <div className="min-w-0 flex-1 text-sm">
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-base font-bold">{r.full_name}</p>
-          <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-bold uppercase", {
-            pending: "bg-amber-400/20 text-amber-300",
-            approved: "bg-emerald-500/20 text-emerald-300",
-            rejected: "bg-rose-500/20 text-rose-300",
-          }[r.status])}>
-            {r.status}
-          </span>
+          {r.waitlist_position !== null ? (
+            <span className="rounded bg-sky-400/20 px-1.5 py-0.5 text-[11px] font-bold uppercase text-sky-200">
+              Waitlist #{r.waitlist_position} · {POOL_LABEL[r.gender]}
+            </span>
+          ) : (
+            <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-bold uppercase", {
+              pending: "bg-amber-400/20 text-amber-300",
+              approved: "bg-emerald-500/20 text-emerald-300",
+              rejected: "bg-rose-500/20 text-rose-300",
+            }[r.status])}>
+              {r.status}
+            </span>
+          )}
           <span className="text-xs text-slate-500">{timeAgo(r.created_at)}</span>
         </div>
         <p className="text-slate-300">
@@ -200,14 +241,34 @@ function RegistrationRow({
       <div className="flex shrink-0 flex-wrap items-start gap-2 sm:w-44 sm:flex-col sm:items-stretch">
         {r.status === "pending" && (
           <>
-            <Button
-              size="sm"
-              variant="success"
-              busy={busy === `ok-${r.id}`}
-              onClick={() => act(`ok-${r.id}`, () => callAction("registration.approve", { id: r.id }), `${r.full_name} added to players`)}
-            >
-              Approve
-            </Button>
+            {r.waitlist_position === null ? (
+              <Button
+                size="sm"
+                variant="success"
+                busy={busy === `ok-${r.id}`}
+                onClick={() => act(`ok-${r.id}`, () => callAction("registration.approve", { id: r.id }), `${r.full_name} added to players`)}
+              >
+                Approve
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="primary"
+                busy={busy === `ok-${r.id}`}
+                onClick={() =>
+                  confirm(
+                    `${r.full_name} is #${r.waitlist_position} on the ${POOL_LABEL[r.gender].toLowerCase()}'s waitlist. Add them to the auction anyway? They'll be on the wheel.`,
+                  ) &&
+                  act(
+                    `ok-${r.id}`,
+                    () => callAction("registration.approve", { id: r.id, fromWaitlist: true }),
+                    `${r.full_name} added from the waitlist`,
+                  )
+                }
+              >
+                Add to auction
+              </Button>
+            )}
             <Button
               size="sm"
               variant="ghost"
@@ -251,7 +312,10 @@ function FormSettings({ settings, onSaved }: { settings: RegistrationSettings; o
     ...settings,
     options: settings.availability_options.join("\n"),
     rulebook_url: settings.rulebook_url ?? "",
+    capMen: settings.capacity_men === null ? "" : String(settings.capacity_men),
+    capWomen: settings.capacity_women === null ? "" : String(settings.capacity_women),
   });
+  const cap = (v: string) => (v.trim() === "" ? null : Math.max(0, Math.floor(Number(v)) || 0));
   const link = typeof window === "undefined" ? "/register" : `${window.location.origin}/register`;
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((s) => ({ ...s, [k]: v }));
 
@@ -272,6 +336,8 @@ function FormSettings({ settings, onSaved }: { settings: RegistrationSettings; o
           final_declaration_text: next.final_declaration_text,
           rulebook_url: next.rulebook_url,
           rulebook_message: next.rulebook_message,
+          capacity_men: cap(next.capMen),
+          capacity_women: cap(next.capWomen),
         }),
       next.is_open ? "Registration form is open" : "Registration form saved (closed)",
     );
@@ -331,6 +397,24 @@ function FormSettings({ settings, onSaved }: { settings: RegistrationSettings; o
           </Field>
           <Field label="Rulebook message">
             <input className={inputClass} maxLength={300} value={f.rulebook_message} onChange={(e) => set("rulebook_message", e.target.value)} />
+          </Field>
+          <Field label="Men's spots" hint="First come, first served. Later registrations go on the waitlist. Empty = no limit.">
+            <input
+              className={inputClass}
+              inputMode="numeric"
+              placeholder="No limit"
+              value={f.capMen}
+              onChange={(e) => set("capMen", e.target.value.replace(/\D/g, ""))}
+            />
+          </Field>
+          <Field label="Women's spots" hint="Waitlisted players aren't added to the auction until you add them.">
+            <input
+              className={inputClass}
+              inputMode="numeric"
+              placeholder="No limit"
+              value={f.capWomen}
+              onChange={(e) => set("capWomen", e.target.value.replace(/\D/g, ""))}
+            />
           </Field>
           <Field label="Availability question" className="sm:col-span-2">
             <input className={inputClass} maxLength={150} value={f.availability_question} onChange={(e) => set("availability_question", e.target.value)} />

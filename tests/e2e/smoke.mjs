@@ -157,6 +157,7 @@ await viewerPage.screenshot({ path: `${SHOTS}/02-viewer-spinning.png` });
 await adminPage.getByRole("button", { name: /Open bidding for/ }).waitFor({ timeout: 15000 });
 const openLabel = await adminPage.getByRole("button", { name: /Open bidding for/ }).textContent();
 const playerName = openLabel.replace("Open bidding for ", "").trim();
+const spunId = (await rest("auction_state?select=current_player_id")).body[0].current_player_id;
 await Promise.all(all.map((p) => p.getByRole("heading", { name: playerName }).waitFor({ timeout: 15000 })));
 check(true, `every device reveals the same player (${playerName})`);
 
@@ -201,7 +202,7 @@ check(true, "SOLD stamp appears on viewer and owner phones");
 await ownerPage.getByText(/You signed .* for/).waitFor({ timeout: 5000 });
 check(true, "owner 1 is told they signed the player");
 await viewerPage.screenshot({ path: `${SHOTS}/07-viewer-sold.png`, fullPage: true });
-const sold = (await rest(`players?select=id,status,sold_team_id,sold_price&name=eq.${encodeURIComponent(playerName)}`)).body[0];
+const sold = (await rest(`players?select=id,status,sold_team_id,sold_price&id=eq.${spunId}`)).body[0];
 check(sold.status === "sold" && sold.sold_team_id === o1.teamId, "player recorded as sold to owner 1's team");
 
 await adminPage.getByRole("button", { name: /Undo last result/ }).click();

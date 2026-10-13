@@ -104,7 +104,7 @@ enough for this event (see [Limits](#limits)).
    `xltgjnmeccyzncstgtlv`).
 2. **Create the database schema**, using one of these:
    - **SQL Editor** (simplest): open **SQL Editor → New query**, then paste
-     and **Run** each file in `supabase/migrations/`, in filename order (11
+     and **Run** each file in `supabase/migrations/`, in filename order (12
      files).
    - **Script over HTTPS:** create a personal access token (avatar →
      **Account preferences → Access Tokens**), then run
@@ -182,6 +182,12 @@ payment instructions, availability options (e.g. match dates), the undertaking &
 (photo and receipt links), pick a grade and **Approve** to add them to the auction pool with their
 photo, availability and notes on the player card. **CSV** exports everything (useful for T-shirt
 orders).
+
+**Spots and waitlist:** set *Men's spots* / *Women's spots* in the form settings. Spots go first come
+first served (by submission time); a rejected registration frees its spot for the next person. Later
+registrations are accepted but told their waitlist position, show under the **Waitlist** tab, and
+aren't added to the auction (so never on the wheel) until you press **Add to auction**. "Approve all
+pending" skips the waitlist. The form shows how many spots are left.
 
 **New registration alerts:** at the top of **Admin → Registrations**, tap **Turn on alerts** on
 your phone (on iPhone, in the installed app). Every admin who does this gets a notification with

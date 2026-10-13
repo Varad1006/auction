@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseUpi, registrationFields, typingMobile, upiLink } from "@/lib/registration";
+import { parseUpi, registrationFields, spotsTaken, typingMobile, upiLink, waitlistPositions } from "@/lib/registration";
 
 describe("UPI payment links", () => {
   it("reads the UPI ID and name from app-generated QR payloads", () => {
@@ -105,5 +105,41 @@ describe("registration field rules", () => {
     expect(flat("B-12-03")).toBe(bad);
     expect(flat("#12")).toBe(bad);
     expect(flat("")).toBe("Enter your flat number");
+  });
+});
+
+describe("waitlist", () => {
+  const at = (n: number) => `2026-10-14T10:00:${String(n).padStart(2, "0")}.000Z`;
+  const e = (id: string, n: number, status: "pending" | "approved" | "rejected" = "pending", gender: "men" | "women" = "men") => ({
+    id,
+    gender,
+    status,
+    created_at: at(n),
+  });
+
+  it("puts registrations after the limit on the waitlist, in order", () => {
+    const list = [e("d", 4), e("a", 1), e("c", 3), e("b", 2)];
+    const w = waitlistPositions(list, { capacity_men: 2, capacity_women: null });
+    expect([...w.entries()]).toEqual([
+      ["c", 1],
+      ["d", 2],
+    ]);
+  });
+
+  it("moves the next person up when someone with a spot is rejected", () => {
+    const list = [e("a", 1, "rejected"), e("b", 2), e("c", 3), e("d", 4)];
+    expect([...waitlistPositions(list, { capacity_men: 2, capacity_women: null }).entries()]).toEqual([["d", 1]]);
+  });
+
+  it("never waitlists approved players or pools without a limit", () => {
+    const list = [e("a", 1), e("b", 2), e("c", 3, "approved"), e("w", 1, "pending", "women")];
+    const w = waitlistPositions(list, { capacity_men: 2, capacity_women: null });
+    expect(w.size).toBe(0);
+    expect(spotsTaken(list, "men")).toBe(3);
+  });
+
+  it("keeps men's and women's queues separate", () => {
+    const list = [e("m1", 1), e("w1", 2, "pending", "women"), e("w2", 3, "pending", "women")];
+    expect([...waitlistPositions(list, { capacity_men: 1, capacity_women: 1 }).entries()]).toEqual([["w2", 1]]);
   });
 });

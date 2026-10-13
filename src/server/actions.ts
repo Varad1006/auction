@@ -7,10 +7,10 @@ import { parsePlayerImport } from "@/lib/import";
 import { photoUrlFrom } from "@/lib/photos";
 import { basePriceFor } from "@/lib/rules";
 import { GRADES, PLAYER_ROLES, POOLS, type AuctionState, type Me, type PoolConfig, type Role } from "@/lib/types";
-import { DECLARATION_MAX, FINAL_DECLARATION_MAX, mobileNumber, PAYMENT_QR_MAX, parseUpi } from "@/lib/registration";
+import { DECLARATION_MAX, FINAL_DECLARATION_MAX, mobileNumber, PAYMENT_QR_MAX, parseUpi, waitlistPositions } from "@/lib/registration";
 import { WISHLIST_MAX } from "@/lib/wishlist";
 import { isPushEndpoint, notifyWishlist, sendTestPush } from "./push";
-import { REG_BUCKET } from "./registration";
+import { REG_BUCKET, registrationQueue, registrationSettings } from "./registration";
 
 // Every write in the app is one of these actions. /api/actions/[action]
 // checks `roles` against the caller's server-resolved role before `run` is
@@ -422,12 +422,24 @@ export const actions = {
   // ---- Registrations ---------------------------------------------------------
   "registration.approve": action({
     roles: ["admin"],
-    input: z.object({ id: uuid, grade: z.enum(GRADES).default("C"), basePrice: money.nullish() }),
+    input: z.object({
+      id: uuid,
+      grade: z.enum(GRADES).default("C"),
+      basePrice: money.nullish(),
+      /** Set when the admin deliberately adds someone from the waitlist. */
+      fromWaitlist: z.boolean().default(false),
+    }),
     run: async ({ me, db }, i) => {
       const reg = await mustOne<{ photo_path: string; status: string }>(
         db.from("registrations").select("photo_path, status").eq("id", i.id).maybeSingle(),
       );
       if (reg.status !== "pending") throw new ActionError(409, "not_pending", `Registration is already ${reg.status}`);
+      if (!i.fromWaitlist) {
+        const position = waitlistPositions(await registrationQueue(db), await registrationSettings(db)).get(i.id);
+        if (position) {
+          throw new ActionError(409, "waitlisted", `This player is #${position} on the waitlist. Use "Add to auction" to add them anyway.`);
+        }
+      }
       // Copy the private photo into the public player-photos bucket.
       let photoUrl: string | null = null;
       let copiedPath: string | null = null;
@@ -530,6 +542,8 @@ export const actions = {
       availability_options: z.array(z.string().trim().min(1).max(60)).max(20),
       declaration_text: z.string().trim().min(1).max(DECLARATION_MAX),
       final_declaration_text: z.string().trim().max(FINAL_DECLARATION_MAX).optional(),
+      capacity_men: z.number().int().min(0).max(10_000).nullable().optional(),
+      capacity_women: z.number().int().min(0).max(10_000).nullable().optional(),
       rulebook_url: z
         .string()
         .trim()

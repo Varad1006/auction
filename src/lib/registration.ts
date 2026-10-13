@@ -54,6 +54,54 @@ export interface RegistrationSettings {
   rulebook_message: string;
   /** QR codes to pay the registration fee. */
   payment_qr: PaymentQr[];
+  /** Spots per pool, first come first served (null = no limit). */
+  capacity_men: number | null;
+  capacity_women: number | null;
+}
+
+export type Gender = "men" | "women";
+
+export function capacityFor(settings: Pick<RegistrationSettings, "capacity_men" | "capacity_women">, gender: Gender): number | null {
+  return gender === "men" ? settings.capacity_men : settings.capacity_women;
+}
+
+export interface QueueEntry {
+  id: string;
+  gender: Gender;
+  status: "pending" | "approved" | "rejected";
+  created_at: string;
+}
+
+/**
+ * Waitlist positions (1 = next in line) for pending registrations beyond a
+ * pool's spots. Spots go in submission order; rejected registrations don't
+ * take one, so the next person moves up. Approved players always keep their
+ * place (an admin may add someone from the waitlist on purpose).
+ */
+export function waitlistPositions(
+  entries: QueueEntry[],
+  settings: Pick<RegistrationSettings, "capacity_men" | "capacity_women">,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const gender of ["men", "women"] as const) {
+    const cap = capacityFor(settings, gender);
+    if (cap === null) continue;
+    const queue = entries
+      .filter((e) => e.gender === gender && e.status !== "rejected")
+      .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+    let position = 0;
+    queue.forEach((e, i) => {
+      if (i >= cap && e.status === "pending") out.set(e.id, ++position);
+    });
+  }
+  return out;
+}
+
+export type Spots = Partial<Record<Gender, { capacity: number; taken: number }>>;
+
+/** Spots taken (pending + approved) and the limit, per pool. */
+export function spotsTaken(entries: Pick<QueueEntry, "gender" | "status">[], gender: Gender): number {
+  return entries.filter((e) => e.gender === gender && e.status !== "rejected").length;
 }
 
 /**

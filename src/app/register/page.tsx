@@ -1,8 +1,8 @@
 import QRCode from "qrcode";
 import { RegisterForm } from "@/components/pages/RegisterForm";
 import { isConfigured } from "@/lib/env";
-import { parseUpi, type PaymentOption, type RegistrationSettings } from "@/lib/registration";
-import { DEFAULT_SETTINGS, registrationSettings } from "@/server/registration";
+import { capacityFor, parseUpi, spotsTaken, type PaymentOption, type RegistrationSettings, type Spots } from "@/lib/registration";
+import { DEFAULT_SETTINGS, registrationQueue, registrationSettings } from "@/server/registration";
 import { adminSupabase } from "@/server/supabase";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,21 @@ async function paymentOptions(settings: RegistrationSettings): Promise<PaymentOp
   return out;
 }
 
+/** Spots left per pool (counts only), when the organisers set a limit. */
+async function spotsLeft(settings: RegistrationSettings): Promise<Spots> {
+  if (settings.capacity_men === null && settings.capacity_women === null) return {};
+  const queue = await registrationQueue(adminSupabase()).catch(() => null);
+  if (!queue) return {};
+  const out: Spots = {};
+  for (const g of ["men", "women"] as const) {
+    const capacity = capacityFor(settings, g);
+    if (capacity !== null) out[g] = { capacity, taken: spotsTaken(queue, g) };
+  }
+  return out;
+}
+
 export default async function Register() {
   const settings = isConfigured ? await registrationSettings(adminSupabase()).catch(() => DEFAULT_SETTINGS) : DEFAULT_SETTINGS;
-  return <RegisterForm settings={settings} payments={await paymentOptions(settings)} />;
+  const spots = isConfigured && settings.is_open ? await spotsLeft(settings) : {};
+  return <RegisterForm settings={settings} payments={await paymentOptions(settings)} spots={spots} />;
 }

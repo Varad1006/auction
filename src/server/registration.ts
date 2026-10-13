@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { RegistrationSettings } from "@/lib/registration";
+import type { QueueEntry, RegistrationSettings } from "@/lib/registration";
 
 export const REG_BUCKET = "registrations";
 
@@ -16,6 +16,8 @@ export const DEFAULT_SETTINGS: RegistrationSettings = {
   declaration_text: "I confirm the details above are correct and I will follow the tournament rules.",
   final_declaration_text: "",
   rulebook_url: null,
+  capacity_men: null,
+  capacity_women: null,
   rulebook_message: "Please read the rulebook before registering.",
   payment_qr: [],
 };
@@ -24,6 +26,13 @@ export async function registrationSettings(db: SupabaseClient): Promise<Registra
   const { data } = await db.from("registration_settings").select("*").eq("id", 1).maybeSingle();
   // Defaults fill columns from migrations that haven't been run yet.
   return data ? { ...DEFAULT_SETTINGS, ...(data as Partial<RegistrationSettings>) } : DEFAULT_SETTINGS;
+}
+
+/** Every registration's place in line (for spots and the waitlist). */
+export async function registrationQueue(db: SupabaseClient): Promise<QueueEntry[]> {
+  const { data, error } = await db.from("registrations").select("id, gender, status, created_at");
+  if (error) throw new Error(`Loading registrations failed: ${error.message}`);
+  return data as QueueEntry[];
 }
 
 /** Checks a file's first bytes, so a renamed file can't pose as an image/PDF. */

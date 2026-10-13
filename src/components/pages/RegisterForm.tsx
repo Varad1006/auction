@@ -14,6 +14,7 @@ import {
   TSHIRT_SIZES,
   type PaymentOption,
   type RegistrationSettings,
+  type Spots,
   AGE_MAX,
   AGE_MIN,
   formatMobile,
@@ -28,7 +29,15 @@ import { Button, inputClass } from "../ui";
 
 type Errors = Record<string, string>;
 
-export function RegisterForm({ settings, payments }: { settings: RegistrationSettings; payments: PaymentOption[] }) {
+export function RegisterForm({
+  settings,
+  payments,
+  spots,
+}: {
+  settings: RegistrationSettings;
+  payments: PaymentOption[];
+  spots: Spots;
+}) {
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(Object.keys(registrationFields.shape).map((k) => [k, ""])),
   );
@@ -39,7 +48,8 @@ export function RegisterForm({ settings, payments }: { settings: RegistrationSet
   const [errors, setErrors] = useState<Errors>({});
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
+  // After submitting: null = got a spot, a number = waitlist position.
+  const [done, setDone] = useState<{ waitlist: number | null } | null>(null);
   // Email typo check: shown once the field is left (or on submit) until the
   // suggestion is taken or the person says their address is right.
   const [emailLeft, setEmailLeft] = useState(false);
@@ -59,14 +69,30 @@ export function RegisterForm({ settings, payments }: { settings: RegistrationSet
     return (
       <FormFrame>
         <TitleCard title={settings.title}>
-          <p className="mt-4 text-4xl" aria-hidden>
-            ✅
-          </p>
-          <h2 className="mt-2 text-xl font-extrabold">You&apos;re registered!</h2>
-          <p className="mt-2 text-slate-300">
-            Thanks, {values.full_name?.split(" ")[0]}. The organisers will review your registration and add you to the auction
-            pool. See you on the field!
-          </p>
+          {done.waitlist ? (
+            <>
+              <p className="mt-4 text-4xl" aria-hidden>
+                ⏳
+              </p>
+              <h2 className="mt-2 text-xl font-extrabold">You&apos;re on the waitlist (#{done.waitlist})</h2>
+              <p className="mt-2 text-slate-300">
+                Thanks, {values.full_name?.split(" ")[0]}. All {values.gender === "women" ? "women's" : "men's"} spots were taken
+                before you registered, so you&apos;re number {done.waitlist} in line. If a spot opens up, the organisers will add
+                you to the auction.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="mt-4 text-4xl" aria-hidden>
+                ✅
+              </p>
+              <h2 className="mt-2 text-xl font-extrabold">You&apos;re registered!</h2>
+              <p className="mt-2 text-slate-300">
+                Thanks, {values.full_name?.split(" ")[0]}. The organisers will review your registration and add you to the auction
+                pool. See you on the field!
+              </p>
+            </>
+          )}
           {/* A full reload gives a clean, empty form. */}
           <a href="/register" className="mt-4 inline-block text-sm font-semibold text-amber-300 underline">
             Submit another response
@@ -146,7 +172,7 @@ export function RegisterForm({ settings, payments }: { settings: RegistrationSet
       const res = await fetch("/api/register", { method: "POST", body: form });
       const body = await res.json().catch(() => null);
       if (!res.ok || !body?.ok) throw new Error(body?.message ?? "Something went wrong, please try again");
-      setDone(true);
+      setDone({ waitlist: typeof body.waitlist === "number" ? body.waitlist : null });
       window.scrollTo({ top: 0 });
     } catch (err) {
       setServerError(err instanceof Error ? err.message : "Something went wrong");
@@ -160,6 +186,7 @@ export function RegisterForm({ settings, payments }: { settings: RegistrationSet
       <form onSubmit={submit} noValidate className="space-y-4">
         <TitleCard title={settings.title}>
           {settings.intro && <p className="mt-2 whitespace-pre-line text-slate-300">{settings.intro}</p>}
+          <SpotsLeft spots={spots} />
           {settings.rulebook_url && (
             <a
               href={settings.rulebook_url}
@@ -467,6 +494,32 @@ async function qrImageFile(payment: PaymentOption): Promise<File> {
   const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("no image"))), "image/png"));
   const slug = (payment.name || payment.upiId).replace(/[^\w]+/g, "-").replace(/^-|-$/g, "") || "qr";
   return new File([blob], `payment-qr-${slug}.png`, { type: "image/png" });
+}
+
+/** "Men: 12 of 64 spots left" — or that the waitlist is open. */
+function SpotsLeft({ spots }: { spots: Spots }) {
+  const pools = (["men", "women"] as const).filter((g) => spots[g]);
+  if (!pools.length) return null;
+  return (
+    <ul className="mt-3 flex flex-wrap gap-2 text-sm">
+      {pools.map((g) => {
+        const { capacity, taken } = spots[g]!;
+        const left = Math.max(capacity - taken, 0);
+        return (
+          <li
+            key={g}
+            className={cn(
+              "rounded-full px-3 py-1 font-semibold ring-1",
+              left > 0 ? "bg-emerald-500/10 text-emerald-200 ring-emerald-500/30" : "bg-amber-400/10 text-amber-200 ring-amber-400/40",
+            )}
+          >
+            {g === "men" ? "Men" : "Women"}:{" "}
+            {left > 0 ? `${left} of ${capacity} spots left` : "full — new registrations join the waitlist"}
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 /** A block of terms in a scroll box with its own "I agree" tick box. */

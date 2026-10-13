@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireRole } from "@/server/http";
 import { vapidKeys } from "@/server/push";
+import { capacityFor, spotsTaken, waitlistPositions } from "@/lib/registration";
 import { REG_BUCKET, registrationSettings } from "@/server/registration";
 import { adminSupabase } from "@/server/supabase";
 
@@ -22,12 +23,18 @@ export async function GET() {
   const vapidPublicKey = await vapidKeys(db)
     .then((k) => k.publicKey)
     .catch(() => null);
+  const settings = await registrationSettings(db);
+  const waitlist = waitlistPositions(data, settings);
   return NextResponse.json(
     {
       vapidPublicKey,
-      settings: await registrationSettings(db),
+      settings,
+      spots: Object.fromEntries(
+        (["men", "women"] as const).map((g) => [g, { taken: spotsTaken(data, g), capacity: capacityFor(settings, g) }]),
+      ),
       registrations: data.map((r) => ({
         ...r,
+        waitlist_position: waitlist.get(r.id) ?? null,
         photo_url: r.photo_path ? (urls.get(r.photo_path) ?? null) : null,
         receipt_url: r.receipt_path ? (urls.get(r.receipt_path) ?? null) : null,
       })),

@@ -1,9 +1,16 @@
 import { after, NextResponse, type NextRequest } from "next/server";
-import { PHOTO_MAX_BYTES, PHOTO_TYPES, RECEIPT_MAX_BYTES, RECEIPT_TYPES, registrationFields } from "@/lib/registration";
+import {
+  PHOTO_MAX_BYTES,
+  PHOTO_TYPES,
+  RECEIPT_MAX_BYTES,
+  RECEIPT_TYPES,
+  registrationFields,
+  waitlistPositions,
+} from "@/lib/registration";
 import { POOL_LABEL } from "@/lib/types";
 import { isSameOrigin, jsonError } from "@/server/http";
 import { notifyAdmins } from "@/server/push";
-import { EXT, REG_BUCKET, registrationSettings, sniffType } from "@/server/registration";
+import { EXT, REG_BUCKET, registrationQueue, registrationSettings, sniffType } from "@/server/registration";
 import { adminSupabase } from "@/server/supabase";
 
 export const dynamic = "force-dynamic";
@@ -105,21 +112,32 @@ export async function POST(req: NextRequest) {
     return jsonError(500, "internal", "Could not save your registration, please try again");
   }
 
+  // Spots are first come first served; later registrations go on the waitlist.
+  const queue = await registrationQueue(db).catch(() => null);
+  const waitlist = queue ? (waitlistPositions(queue, settings).get(saved.id) ?? null) : null;
+
   // Ping the admins' phones after the response, so the player doesn't wait.
   const origin = req.headers.get("origin") ?? req.nextUrl.origin;
   after(async () => {
     const { count } = await db.from("registrations").select("id", { count: "exact", head: true }).eq("status", "pending");
-    const waiting = count ?? 1;
+    const who = `${POOL_LABEL[input.gender]} · ${input.role} · ${input.age} yrs`;
     await notifyAdmins(
       db,
-      {
-        title: `📝 New registration: ${input.full_name}`,
-        body: `${POOL_LABEL[input.gender]} · ${input.role} · ${input.age} yrs — ${waiting} waiting for your approval`,
-        tag: `registration-${saved.id}`,
-        url: "/admin/registrations",
-      },
+      waitlist
+        ? {
+            title: `⏳ Waitlist #${waitlist}: ${input.full_name}`,
+            body: `${who} — ${POOL_LABEL[input.gender].toLowerCase()}'s spots are full, so they're on the waitlist`,
+            tag: `registration-${saved.id}`,
+            url: "/admin/registrations",
+          }
+        : {
+            title: `📝 New registration: ${input.full_name}`,
+            body: `${who} — ${count ?? 1} waiting for your approval`,
+            tag: `registration-${saved.id}`,
+            url: "/admin/registrations",
+          },
       origin,
     ).catch((e) => console.error("Admin notification failed", e));
   });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, waitlist });
 }

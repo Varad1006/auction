@@ -73,9 +73,11 @@ async function nextPush(path, timeout = 10000) {
   }
   return null;
 }
-const settings = (is_open) =>
+const settings = (is_open, capacity = {}) =>
   act("registration.settings", {
     is_open,
+    capacity_men: capacity.men ?? null,
+    capacity_women: capacity.women ?? null,
     title: "Society Premier League 2025 – Registration",
     intro: "Matches on weekend mornings in November, 7:30 am – 1:00 pm at the society ground.",
     payment_instructions: "Pay ₹500 to UPI: spl@upi and upload the screenshot.",
@@ -266,7 +268,7 @@ const ok = await act("registration.approve", { id: reg.id });
 check(ok.status === 200, `approve creates the player (${ok.body?.message ?? "ok"})`);
 const again = await act("registration.approve", { id: reg.id });
 check(again.status === 409, "a registration can't be approved twice");
-const players = await (await fetch(`${SB_URL}/rest/v1/players?select=*&name=eq.Rohan%20Patil`, { headers: { apikey: ANON, authorization: `Bearer ${ANON}` } })).json();
+const players = await (await fetch(`${SB_URL}/rest/v1/players?select=*&id=eq.${ok.body?.data}`, { headers: { apikey: ANON, authorization: `Bearer ${ANON}` } })).json();
 const p = players.at(-1);
 const menBase = (await (await fetch(`${SB_URL}/rest/v1/pool_config?select=base_price_c&pool=eq.men`, { headers: { apikey: ANON, authorization: `Bearer ${ANON}` } })).json())[0].base_price_c;
 check(p?.role === "All-rounder" && p?.pool === "men" && p?.base_price === menBase, "player has the chosen role, pool and the pool base price");
@@ -288,6 +290,33 @@ await admPage.getByRole("button", { name: /^approved/ }).click();
 await admPage.waitForTimeout(500);
 await admPage.screenshot({ path: `${SHOTS}/r-04-admin.png`, fullPage: true });
 
+console.log("Waitlist");
+// Every men's spot is taken once the limit equals the men already registered.
+const before = await (await fetch(`${APP}/api/admin/registrations`, { headers: { cookie: cookieHeader(admin) } })).json();
+const menTaken = before.spots.men.taken;
+check((await settings(true, { men: menTaken })).status === 200, `admin sets ${menTaken} men's spots`);
+const formPage = await (await browser.newContext({ ...devices["iPhone 13"] })).newPage();
+await formPage.goto(`${APP}/register`);
+check((await formPage.getByText("Men: full — new registrations join the waitlist").count()) === 1, "the form says the men's spots are full");
+await formPage.context().close();
+// A name unique to this run (letters only, as the form requires).
+const lateName = `Late ${Date.now().toString(26).replace(/\d/g, (d) => "abcdefghij"[d])}`;
+const late = await post({ ...fields, full_name: lateName, email: `late.${Date.now()}@example.com`, phone: "9123456780" }, files);
+check(late.status === 200 && late.body?.waitlist === 1, `a registration after the limit is waitlisted (#${late.body?.waitlist})`);
+const waitPush = await nextPush("/push/admin");
+check(waitPush && adminPhone.read(waitPush).title === `⏳ Waitlist #1: ${lateName}`, "the admin is told it's a waitlist registration");
+const after1 = await (await fetch(`${APP}/api/admin/registrations`, { headers: { cookie: cookieHeader(admin) } })).json();
+const lateReg = after1.registrations.find((r) => r.full_name === lateName);
+check(lateReg?.waitlist_position === 1, "the admin list shows the waitlist position");
+const blocked = await act("registration.approve", { id: lateReg.id });
+check(blocked.status === 409 && blocked.body?.code === "waitlisted", "a plain approve won't take someone off the waitlist");
+const lateRest = await (await fetch(`${SB_URL}/rest/v1/players?select=id&name=eq.${encodeURIComponent(lateName)}`, { headers: { apikey: ANON, authorization: `Bearer ${ANON}` } })).json();
+check(lateRest.length === 0, "waitlisted players aren't in the auction (so not on the wheel)");
+const fromWaitlist = await act("registration.approve", { id: lateReg.id, fromWaitlist: true });
+check(fromWaitlist.status === 200, "the admin can add them from the waitlist");
+const added = await (await fetch(`${SB_URL}/rest/v1/players?select=status&id=eq.${fromWaitlist.body?.data}`, { headers: { apikey: ANON, authorization: `Bearer ${ANON}` } })).json();
+check(added[0]?.status === "pool", "once added, they're in the pool for the wheel");
+await settings(true);
 await browser.close();
 
 console.log("Start fresh");
@@ -303,6 +332,8 @@ const after = await (await fetch(`${APP}/api/admin/registrations`, { headers: { 
 check(cleaned.status === 200 && after.registrations.length === 0, `admin deletes all registrations (${cleaned.body?.data?.registrations ?? cleaned.body?.message})`);
 check((await (await fetch(`${SB_URL}/rest/v1/players?select=id&limit=1`, { headers: { apikey: ANON, authorization: `Bearer ${ANON}` } })).json()).length === 1, "players are kept when only registrations are cleared");
 await act("registration.payments", { items: [] });
+// Remove the players this run created, so reruns start clean.
+for (const id of [ok.body?.data, fromWaitlist.body?.data]) if (id) await act("player.delete", { id });
 await act("push.unsubscribe", { endpoint: adminPhone.sub.endpoint });
 await actAs(owner, "push.unsubscribe", { endpoint: ownerPhone.sub.endpoint });
 pushServer.close();
