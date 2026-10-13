@@ -381,6 +381,22 @@ check(csv.status === 200 && (await csv.text()).includes(playerName), "admin CSV 
 const csvOwner = await fetch(`${APP}/api/admin/export?kind=players`, { headers: { cookie: cookieHeader(owner1) } });
 check(csvOwner.status === 403, "owner cannot export CSV");
 
+console.log("App updates");
+const v = await (await fetch(`${APP}/api/version`)).json();
+check(typeof v.version === "string" && v.version.length > 0, `the server reports its version (${v.version})`);
+const updPage = await open(null, "iPhone 13", "/live");
+await updPage.getByText(/Waiting for the next spin|Spinning|On the block|Bidding open|Sold|Unsold/).first().waitFor({ timeout: 15000 });
+await updPage.evaluate(() => (window.__marker = 1));
+await updPage.route("**/api/version", (r) => r.fulfill({ json: { version: "newer-release" } }));
+await updPage.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+const reloaded = await updPage.waitForFunction(() => window.__marker === undefined, null, { timeout: 10000 }).then(() => true, () => false);
+check(reloaded, "a reopened app reloads itself when a new version is live");
+await updPage.goto(`${APP}/register`);
+await updPage.evaluate(() => (window.__marker = 1));
+await updPage.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+await updPage.waitForTimeout(1500);
+check(await updPage.evaluate(() => window.__marker === 1), "the registration form is never reloaded under someone filling it in");
+
 await browser.close();
 console.log(failures ? `\n${failures} check(s) failed` : "\nAll checks passed");
 process.exit(failures ? 1 : 0);

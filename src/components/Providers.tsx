@@ -5,6 +5,7 @@ import { LiveProvider } from "./live/LiveProvider";
 import { MeProvider } from "./MeProvider";
 import { RegisterServiceWorker } from "./RegisterServiceWorker";
 import { ToastProvider } from "./Toast";
+import { UpdateNotice } from "./UpdateNotice";
 
 // Standalone pages that don't need the signed-in user or the live auction.
 // Skipping them keeps a crowd filling in the registration form from using up
@@ -24,6 +25,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         </MeProvider>
       )}
       <RegisterServiceWorker />
+      <UpdateNotice />
     </ToastProvider>
   );
 }

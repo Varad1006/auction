@@ -1,7 +1,12 @@
 import type { NextConfig } from "next";
 
+// Unique per deployment. Open pages and installed apps compare it with
+// /api/version to notice a new release (see UpdateNotice).
+const buildId = `${process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "local"}-${Date.now().toString(36)}`;
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  env: { NEXT_PUBLIC_BUILD_ID: buildId },
   async headers() {
     return [
       {
