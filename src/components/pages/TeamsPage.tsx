@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { cn, initials, money, textOn } from "@/lib/format";
 import { POOL_LABEL, POOLS, type Player } from "@/lib/types";
+import { bySigningThenPrice, extrasText, SigningBadge } from "../live/SigningBadge";
 import { useAuction } from "../live/useAuction";
 
 export function TeamsPage() {
@@ -15,7 +16,7 @@ export function TeamsPage() {
       <h1 className="text-2xl font-extrabold">Teams</h1>
       <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {teams.map((t) => {
-          const roster = players.filter((p) => p.status === "sold" && p.sold_team_id === t.id);
+          const roster = players.filter((p) => p.status === "sold" && p.sold_team_id === t.id).sort(bySigningThenPrice);
           const spent = roster.reduce((s, p) => s + (p.sold_price ?? 0), 0);
           const leading = state?.phase === "bidding" && state.leading_team_id === t.id;
           return (
@@ -35,7 +36,8 @@ export function TeamsPage() {
                         <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{POOL_LABEL[p]}</p>
                         <p className="text-xl font-black tabular-nums">{money(s?.remaining)}</p>
                         <p className="text-xs text-slate-400">
-                          left · squad {s?.squadCount ?? 0}/{s?.maxSquad ?? 0} · max bid {money(s?.maxBid)}
+                          left · bought {s?.squadCount ?? 0}/{s?.maxSquad ?? 0}
+                          {s && extrasText(s) ? ` + ${extrasText(s)}` : ""} · max bid {money(s?.maxBid)}
                         </p>
                       </div>
                     );
@@ -83,7 +85,7 @@ export function TeamDetailPage({ teamId }: { teamId: string }) {
           const s = summaries(pool).get(team.id);
           const roster = players
             .filter((p) => p.status === "sold" && p.sold_team_id === team.id && p.pool === pool)
-            .sort((a, b) => (b.sold_price ?? 0) - (a.sold_price ?? 0));
+            .sort(bySigningThenPrice);
           return (
             <section key={pool} className="rounded-2xl bg-slate-900 p-4 ring-1 ring-white/10">
               <h2 className="text-lg font-bold">{POOL_LABEL[pool]}</h2>
@@ -92,7 +94,7 @@ export function TeamDetailPage({ teamId }: { teamId: string }) {
                   {[
                     ["Purse left", money(s.remaining)],
                     ["Spent", money(s.spent)],
-                    ["Squad", `${s.squadCount}/${s.maxSquad}`],
+                    ["Bought", `${s.squadCount}/${s.maxSquad}`],
                     ["Max bid", money(s.maxBid)],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-lg bg-white/5 px-1 py-2">
@@ -102,8 +104,13 @@ export function TeamDetailPage({ teamId }: { teamId: string }) {
                   ))}
                 </div>
               )}
+              {s && s.owners + s.stars > 0 && (
+                <p className="mt-2 text-xs text-slate-400">
+                  Team of {s.teamSize}: {s.squadCount} from the auction + {extrasText(s)}. Their prices come out of the purse.
+                </p>
+              )}
               {s && s.squadCount < s.minSquad && (
-                <p className="mt-2 text-xs text-amber-300">Needs {s.minSquad - s.squadCount} more to reach the minimum squad of {s.minSquad}.</p>
+                <p className="mt-2 text-xs text-amber-300">Needs {s.minSquad - s.squadCount} more from the auction to reach {s.minSquad}.</p>
               )}
               <ul className="mt-4 divide-y divide-white/5">
                 {roster.length === 0 && <li className="py-3 text-sm text-slate-500">No players bought yet.</li>}
@@ -112,8 +119,10 @@ export function TeamDetailPage({ teamId }: { teamId: string }) {
                     <Avatar player={p} className="h-10 w-10" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-semibold">{p.name}</span>
-                      <span className="text-xs text-slate-400">
-                        {p.role} · Round {p.decided_round ?? "–"}
+                      <span className="flex items-center gap-1.5 text-xs text-slate-400">
+                        {p.signing && <SigningBadge signing={p.signing} />}
+                        {p.role}
+                        {!p.signing && ` · Round ${p.decided_round ?? "–"}`}
                       </span>
                     </span>
                     <span className="font-bold tabular-nums">{money(p.sold_price)}</span>

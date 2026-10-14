@@ -18,7 +18,8 @@ export function OverviewPage() {
 
   const onBlock = state && ["spinning", "revealed", "bidding"].includes(state.phase) ? player : null;
   const leader = state?.leading_team_id ? teamById.get(state.leading_team_id) : null;
-  const sold = players.filter((p) => p.status === "sold");
+  // Auction buys only: owners and star players joined their teams outside it.
+  const sold = players.filter((p) => p.status === "sold" && !p.signing);
   const topBuys = [...sold].sort((x, y) => (y.sold_price ?? 0) - (x.sold_price ?? 0)).slice(0, 5);
   const totalSpent = sold.reduce((s, p) => s + (p.sold_price ?? 0), 0);
 
@@ -93,7 +94,7 @@ export function OverviewPage() {
               })}
             </ol>
           )}
-          <p className="mt-2 text-xs text-slate-500">Total spent so far: {money(totalSpent)}</p>
+          <p className="mt-2 text-xs text-slate-500">Spent in the auction so far: {money(totalSpent)}</p>
         </section>
 
         {/* Standings */}

@@ -98,9 +98,9 @@ export interface MarketStats {
   byRole: { role: PlayerRole; count: number; average: number; left: number }[];
 }
 
-/** What players have gone for so far in a pool. */
+/** What players have gone for so far in a pool (auction buys only, not owners or stars). */
 export function marketStats(players: Player[], pool: Pool): MarketStats {
-  const sold = players.filter((p) => p.pool === pool && p.status === "sold" && p.sold_price !== null);
+  const sold = players.filter((p) => p.pool === pool && p.status === "sold" && p.sold_price !== null && !p.signing);
   const avg = (list: Player[]) => (list.length ? Math.round(list.reduce((s, p) => s + (p.sold_price ?? 0), 0) / list.length) : 0);
   let highest: MarketStats["highest"] = null;
   for (const p of sold) if (!highest || (p.sold_price ?? 0) > highest.price) highest = { player: p, price: p.sold_price ?? 0 };

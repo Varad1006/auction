@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { cn, initials, money } from "@/lib/format";
 import { PLAYER_ROLES, POOL_LABEL, POOLS, type Player, type Pool } from "@/lib/types";
 import { PlayerDeckCard } from "../live/PlayerDeckCard";
+import { SigningBadge } from "../live/SigningBadge";
 import { TeamBadge } from "../live/TeamBadge";
 import { useAuction } from "../live/useAuction";
 import { WishlistStar } from "../owner/WishlistStar";
@@ -104,6 +105,7 @@ export function PlayersPage() {
                       <span className="flex h-full items-center justify-center text-3xl font-black text-slate-600">{initials(p.name)}</span>
                     )}
                     {onBlock && <span className="absolute right-2 top-2 rounded-md bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold uppercase">Live</span>}
+                    {p.signing && <SigningBadge signing={p.signing} className="absolute bottom-2 left-2" />}
                     {p.status === "unsold" && (
                       <span className="absolute inset-x-0 bottom-0 bg-slate-950/80 py-1 text-center text-[11px] font-bold uppercase tracking-widest text-slate-300">
                         Unsold

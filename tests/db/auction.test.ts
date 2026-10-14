@@ -472,6 +472,87 @@ describe.skipIf(!ADMIN_URL)("auction database", () => {
     });
   });
 
+  describe("owners and star players", () => {
+    const sign = (id: string, team: string, signing: string, price: number) =>
+      q("select * from admin_sign_player('a', $1, $2, $3, $4)", [id, team, signing, price]);
+    const status = async (team: string) => (await q("select * from team_pool_status($1, 'men')", [team]))[0];
+
+    it("takes their price from the purse without using squad places", async () => {
+      await q("update pool_config set max_squad = 1, min_squad = 1 where pool = 'men'");
+      const owner = await addPlayer("Owner One");
+      const star = await addPlayer("Star One");
+      const buy = await addPlayer("Auction Buy");
+      const [row] = await sign(owner, teams[0].id, "owner", 300);
+      expect(row).toMatchObject({ status: "sold", signing: "owner", sold_team_id: teams[0].id, sold_price: 300, decided_round: null });
+      await sign(star, teams[0].id, "star", 500);
+      expect(await status(teams[0].id)).toMatchObject({ spent: 800, squad_count: 0 });
+      // Max squad 1 still leaves room for one auction buy; 200 of 1000 left.
+      await putOnBlock(buy);
+      expect((await errorOf(bid(teams[0].id, buy, 205))).hint).toBe("insufficient_purse");
+      await bid(teams[0].id, buy, 200);
+      await q("select auction_sell('a', $1)", [buy]);
+      expect(await status(teams[0].id)).toMatchObject({ spent: 1000, squad_count: 1 });
+      // No results for owners or stars: only the auction sale.
+      expect((await q("select player_id from results")).map((r) => r.player_id)).toEqual([buy]);
+    });
+
+    it("allows one star per team and changes prices within the purse", async () => {
+      const a = await addPlayer("Star A");
+      const b = await addPlayer("Star B");
+      await sign(a, teams[0].id, "star", 100);
+      expect((await errorOf(sign(b, teams[0].id, "star", 100))).hint).toBe("star_taken");
+      await sign(b, teams[1].id, "star", 100);
+      // Re-signing changes the price; the player's own old price is freed first.
+      expect((await sign(a, teams[0].id, "star", 1000))[0].sold_price).toBe(1000);
+      expect((await errorOf(sign(a, teams[0].id, "star", 1001))).hint).toBe("insufficient_purse");
+      expect((await errorOf(sign(a, teams[0].id, "captain", 10))).hint).toBe("bad_signing");
+      // Moving to another team checks that team's purse and star.
+      expect((await errorOf(sign(a, teams[1].id, "star", 10))).hint).toBe("star_taken");
+      await sign(a, teams[1].id, "owner", 10);
+      expect(await status(teams[0].id)).toMatchObject({ spent: 0 });
+      expect(await status(teams[1].id)).toMatchObject({ spent: 110, squad_count: 0 });
+    });
+
+    it("turns a manual assignment into an owner but not an auction sale", async () => {
+      const assigned = await addPlayer("Assigned Owner");
+      const bought = await addPlayer("Bought");
+      await q("select auction_assign_player('a', $1, $2, 400)", [assigned, teams[0].id]);
+      await putOnBlock(bought);
+      await bid(teams[1].id, bought, 20);
+      await q("select auction_sell('a', $1)", [bought]);
+      expect((await errorOf(sign(bought, teams[1].id, "owner", 0))).hint).toBe("sold_in_auction");
+
+      await sign(assigned, teams[0].id, "owner", 0);
+      const results = await q<{ id: string; player_id: string }>("select id, player_id from results where undone_at is null");
+      expect(results.map((r) => r.player_id)).toEqual([bought]);
+      expect(String((await state()).last_result_id)).toBe(String(results[0].id));
+      expect(await status(teams[0].id)).toMatchObject({ spent: 0, squad_count: 0 });
+      // Undo now reaches the auction sale, not the owner.
+      await q("select auction_undo_result('a')");
+      expect((await q("select status, signing from players where id = $1", [assigned]))[0]).toEqual({ status: "sold", signing: "owner" });
+    });
+
+    it("can be taken off a team, and survives an auction reset", async () => {
+      const owner = await addPlayer("Kept Owner");
+      const star = await addPlayer("Released Star");
+      await sign(owner, teams[0].id, "owner", 250);
+      await sign(star, teams[0].id, "star", 400);
+      expect((await errorOf(q("select admin_delete_player('a', $1)", [owner]))).hint).toBe("player_sold");
+      const [released] = await q("select * from admin_release_signing('a', $1)", [star]);
+      expect(released).toMatchObject({ status: "pool", signing: null, sold_team_id: null, sold_price: null });
+      expect((await errorOf(q("select admin_release_signing('a', $1)", [star]))).hint).toBe("not_signed");
+      await q("select auction_reset('a')");
+      expect((await q("select status, signing, sold_price from players where id = $1", [owner]))[0]).toEqual({ status: "sold", signing: "owner", sold_price: 250 });
+      expect((await errorOf(q("update players set status = 'pool', sold_team_id = null, sold_price = null where id = $1", [owner]))).message).toMatch(/signing_needs_team/);
+    });
+
+    it("won't sign the player on the block", async () => {
+      const p = await addPlayer("Blocked");
+      await q("select auction_select_player('a', $1)", [p]);
+      expect((await errorOf(sign(p, teams[0].id, "owner", 0))).hint).toBe("on_block");
+    });
+  });
+
   describe("concurrency", () => {
     it("accepts exactly one of many simultaneous identical bids", async () => {
       const p1 = await addPlayer("Race");

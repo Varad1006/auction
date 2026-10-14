@@ -27,7 +27,13 @@ export interface TeamPoolSummary {
   maxSquad: number;
   spent: number;
   remaining: number;
+  /** Players bought in the auction: what min/max squad apply to. */
   squadCount: number;
+  /** Playing owners and the star player (paid from the purse, outside the squad limits). */
+  owners: number;
+  stars: number;
+  /** Everyone on the team in this pool. */
+  teamSize: number;
   /** Largest bid allowed right now (purse minus reserve for the minimum squad). */
   maxBid: number;
 }
@@ -45,16 +51,20 @@ export function teamPoolSummary(
   const maxSquad = lim?.max_squad ?? config.max_squad;
   let spent = 0;
   let squadCount = 0;
+  let owners = 0;
+  let stars = 0;
   for (const p of players) {
     if (p.status === "sold" && p.sold_team_id === teamId && p.pool === pool) {
       spent += p.sold_price ?? 0;
-      squadCount++;
+      if (p.signing === "owner") owners++;
+      else if (p.signing === "star") stars++;
+      else squadCount++;
     }
   }
   const remaining = purse - spent;
   const reserve = Math.max(minSquad - squadCount - 1, 0) * poolMinBase(config);
   const maxBid = squadCount >= maxSquad ? 0 : Math.max(remaining - reserve, 0);
-  return { teamId, pool, purse, minSquad, maxSquad, spent, remaining, squadCount, maxBid };
+  return { teamId, pool, purse, minSquad, maxSquad, spent, remaining, squadCount, owners, stars, teamSize: squadCount + owners + stars, maxBid };
 }
 
 /** Smallest acceptable next bid on the player currently on the block. */

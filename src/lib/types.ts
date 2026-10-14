@@ -10,6 +10,9 @@ export type PlayerRole = "Batter" | "Bowler" | "All-rounder" | "Wicket-keeper";
 export const PLAYER_ROLES: PlayerRole[] = ["Batter", "Bowler", "All-rounder", "Wicket-keeper"];
 
 export type PlayerStatus = "pool" | "sold" | "unsold" | "waitlist";
+/** Joined a team outside the auction: a playing owner or the team's star player. */
+export type Signing = "owner" | "star";
+export const SIGNING_LABEL: Record<Signing, string> = { owner: "Owner", star: "★ Star" };
 export type Phase = "idle" | "spinning" | "revealed" | "bidding" | "sold" | "unsold";
 export type Role = "admin" | "owner" | "viewer";
 
@@ -72,6 +75,8 @@ export interface Player {
   decided_round: number | null;
   /** Set while on the waitlist: the queue order. */
   waitlisted_at: string | null;
+  /** Owner or star player (sold, but not bought in the auction). */
+  signing: Signing | null;
   created_at: string;
   updated_at: string;
 }

@@ -271,6 +271,25 @@ export const actions = {
       return player;
     },
   }),
+  // Owners and star players: on a team outside the auction, price paid
+  // from the purse. Calling it again changes the team, role or price.
+  "player.sign": action({
+    roles: ["admin"],
+    input: z.object({ playerId: uuid, teamId: uuid, signing: z.enum(["owner", "star"]), price: money }),
+    run: ({ me, db }, i) =>
+      rpc(db, "admin_sign_player", {
+        p_actor: me.email,
+        p_player_id: i.playerId,
+        p_team_id: i.teamId,
+        p_signing: i.signing,
+        p_price: i.price,
+      }),
+  }),
+  "player.release": action({
+    roles: ["admin"],
+    input: z.object({ playerId: uuid }),
+    run: ({ me, db }, i) => rpc(db, "admin_release_signing", { p_actor: me.email, p_player_id: i.playerId }),
+  }),
   "player.setWaitlist": action({
     roles: ["admin"],
     input: z.object({ id: uuid, waitlisted: z.boolean() }),

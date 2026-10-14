@@ -6,8 +6,9 @@ import { cn, money } from "@/lib/format";
 import type { ImportedPlayer } from "@/lib/import";
 import { resizeImage } from "@/lib/image";
 import { basePriceFor } from "@/lib/rules";
-import { PLAYER_ROLES, POOL_LABEL, POOLS, type Player, type PlayerRole, type Pool } from "@/lib/types";
+import { PLAYER_ROLES, POOL_LABEL, POOLS, type Player, type PlayerRole, type Pool, type Signing } from "@/lib/types";
 import { PlayerAvatar } from "../live/PlayerCard";
+import { SigningBadge } from "../live/SigningBadge";
 import { TeamBadge } from "../live/TeamBadge";
 import { useAuction } from "../live/useAuction";
 import { useToast } from "../Toast";
@@ -15,14 +16,16 @@ import { Button, Card, Field, inputClass, Modal, useRunner } from "../ui";
 
 type StatusFilter = "all" | "pool" | "sold" | "unsold" | "waitlist";
 
+type JoinAs = "auction" | Signing;
+
 export function PlayersManager() {
-  const { players, waitlist, teamById, state, ready } = useAuction();
+  const { players, waitlist, teamById, state, ready, results } = useAuction();
   const { busy, run } = useRunner();
   const [pool, setPool] = useState<Pool | "all">("all");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<Player | "new" | "new-waitlist" | null>(null);
-  const [assigning, setAssigning] = useState<Player | null>(null);
+  const [assigning, setAssigning] = useState<{ player: Player; as: JoinAs } | null>(null);
   const [importing, setImporting] = useState(false);
 
   // "Any status" means the auction's players; the waitlist has its own filter.
@@ -37,6 +40,8 @@ export function PlayersManager() {
   const waitlistSpot = (p: Player) => waitlist.filter((w) => w.pool === p.pool).indexOf(p) + 1;
 
   const onBlock = (p: Player) => state?.current_player_id === p.id && ["spinning", "revealed", "bidding"].includes(state.phase);
+  // Assigned by hand (not bought in the auction), so it can become an owner or star.
+  const assignedByHand = (p: Player) => results.some((r) => r.player_id === p.id && !r.undone_at && r.method === "manual");
 
   return (
     <div className="space-y-4">
@@ -56,6 +61,7 @@ export function PlayersManager() {
           </div>
         }
       >
+        <SigningsSummary onEdit={(p) => setAssigning({ player: p, as: p.signing ?? "owner" })} />
         <div className="grid gap-2 sm:grid-cols-[10rem_10rem_1fr]">
           <select className={inputClass} value={pool} onChange={(e) => setPool(e.target.value as Pool | "all")} aria-label="Pool">
             <option value="all">All pools</option>
@@ -89,6 +95,7 @@ export function PlayersManager() {
                 <PlayerAvatar player={p} className="h-11 w-11 shrink-0 rounded-lg text-sm" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">
+                    {p.signing && <SigningBadge signing={p.signing} className="mr-1.5" />}
                     {p.name}
                     {onBlock(p) && <span className="ml-2 rounded bg-amber-400 px-1.5 text-[10px] font-bold uppercase text-amber-950">On block</span>}
                   </p>
@@ -126,8 +133,32 @@ export function PlayersManager() {
                     Edit
                   </Button>
                   {(p.status === "pool" || p.status === "unsold") && !onBlock(p) && (
-                    <Button size="sm" variant="ghost" onClick={() => setAssigning(p)} title="Assign to a team without bidding">
+                    <Button size="sm" variant="ghost" onClick={() => setAssigning({ player: p, as: "auction" })} title="Put on a team without bidding: as an owner, the star player, or an assigned pick">
                       Assign
+                    </Button>
+                  )}
+                  {p.signing && (
+                    <>
+                      <Button size="sm" variant="ghost" onClick={() => setAssigning({ player: p, as: p.signing! })} title="Change the price, team or role">
+                        Price
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-rose-300"
+                        busy={busy === `rel-${p.id}`}
+                        onClick={() =>
+                          confirm(`Take ${p.name} off ${team?.name ?? "their team"}? Their price goes back to the purse and they return to the pool.`) &&
+                          run(`rel-${p.id}`, () => callAction("player.release", { playerId: p.id }), `${p.name} removed from the team`)
+                        }
+                      >
+                        Remove
+                      </Button>
+                    </>
+                  )}
+                  {p.status === "sold" && !p.signing && assignedByHand(p) && (
+                    <Button size="sm" variant="ghost" onClick={() => setAssigning({ player: p, as: "owner" })} title="Make this an owner or star player">
+                      Owner / star
                     </Button>
                   )}
                   {p.status === "pool" && !onBlock(p) && (
@@ -177,8 +208,15 @@ export function PlayersManager() {
           />
         )}
       </Modal>
-      <Modal open={assigning !== null} onClose={() => setAssigning(null)} title={`Assign ${assigning?.name ?? ""}`}>
-        {assigning && <AssignForm player={assigning} onDone={() => setAssigning(null)} />}
+      <Modal open={assigning !== null} onClose={() => setAssigning(null)} title={`Assign ${assigning?.player.name ?? ""}`}>
+        {assigning && (
+          <AssignForm
+            key={assigning.player.id}
+            player={players.find((p) => p.id === assigning.player.id) ?? assigning.player}
+            initialAs={assigning.as}
+            onDone={() => setAssigning(null)}
+          />
+        )}
       </Modal>
       <Modal open={importing} onClose={() => setImporting(false)} title="Bulk import players">
         <ImportForm onDone={() => setImporting(false)} />
@@ -365,25 +403,75 @@ function PhotoUpload({ player }: { player: Player }) {
   );
 }
 
-function AssignForm({ player, onDone }: { player: Player; onDone: () => void }) {
-  const { teams } = useAuction();
+const JOIN_AS: { value: JoinAs; label: string; hint: string }[] = [
+  {
+    value: "owner",
+    label: "Team owner",
+    hint: "Plays for the team they own. The price comes out of the purse but they don't count towards the squad.",
+  },
+  {
+    value: "star",
+    label: "★ Star player",
+    hint: "One per team, picked outside the auction. The price comes out of the purse but they don't count towards the squad.",
+  },
+  {
+    value: "auction",
+    label: "Assigned pick",
+    hint: "Counts as an auction buy, e.g. to fill squads after the final round. Logged as a result and can be undone.",
+  },
+];
+
+/** Puts a player on a team without bidding: as an owner, the star player or an assigned pick. */
+function AssignForm({ player, initialAs, onDone }: { player: Player; initialAs: JoinAs; onDone: () => void }) {
+  const { teams, players, summaries } = useAuction();
   const { busy, run } = useRunner();
-  const [teamId, setTeamId] = useState("");
-  const [price, setPrice] = useState(String(player.base_price));
+  const sold = player.status === "sold";
+  const [as, setAs] = useState<JoinAs>(initialAs);
+  const [teamId, setTeamId] = useState(player.sold_team_id ?? "");
+  const [price, setPrice] = useState(String(sold ? (player.sold_price ?? 0) : player.base_price));
+  // A sold player can only be turned into (or stay) an owner or star.
+  const options = sold ? JOIN_AS.filter((o) => o.value !== "auction") : JOIN_AS;
+  const team = teams.find((t) => t.id === teamId);
+  const summary = teamId ? summaries(player.pool).get(teamId) : undefined;
+  const purseLeft = summary ? summary.remaining + (sold && player.sold_team_id === teamId ? (player.sold_price ?? 0) : 0) : null;
+  const otherStar = as === "star" && teamId ? players.find((p) => p.signing === "star" && p.sold_team_id === teamId && p.id !== player.id) : undefined;
+  const overPurse = purseLeft !== null && price !== "" && Number(price) > purseLeft;
+
+  const submit = () => {
+    if (as === "auction") {
+      return run("assign", () => callAction("auction.assign", { playerId: player.id, teamId, price: Number(price) }), "Player assigned");
+    }
+    const what = as === "star" ? "star player" : "owner";
+    return run(
+      "assign",
+      () => callAction("player.sign", { playerId: player.id, teamId, signing: as, price: Number(price) }),
+      `${player.name} is ${team?.name ?? "the team"}'s ${what} (${money(Number(price))})`,
+    );
+  };
+
   return (
     <form
       className="space-y-4"
       onSubmit={(e) => {
         e.preventDefault();
-        void run("assign", () => callAction("auction.assign", { playerId: player.id, teamId, price: Number(price) }), "Player assigned").then(
-          (r) => r !== undefined && onDone(),
-        );
+        void submit().then((r) => r !== undefined && onDone());
       }}
     >
-      <p className="text-sm text-slate-400">
-        Sells {player.name} to a team without bidding, e.g. to fill minimum squads after the final round. It is logged as a
-        manual result and can be undone.
-      </p>
+      <fieldset className="space-y-2">
+        <legend className="mb-1 text-sm font-medium text-slate-300">Joins the team as</legend>
+        {options.map((o) => (
+          <label
+            key={o.value}
+            className={cn("flex cursor-pointer items-start gap-2 rounded-xl p-3 text-sm ring-1", as === o.value ? "bg-amber-400/10 ring-amber-400/50" : "ring-white/10")}
+          >
+            <input type="radio" name="join-as" className="mt-0.5 h-4 w-4 accent-amber-400" checked={as === o.value} onChange={() => setAs(o.value)} />
+            <span>
+              <b>{o.label}</b>
+              <span className="block text-slate-400">{o.hint}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
       <Field label="Team">
         <select className={inputClass} required value={teamId} onChange={(e) => setTeamId(e.target.value)}>
           <option value="">Choose…</option>
@@ -394,15 +482,71 @@ function AssignForm({ player, onDone }: { player: Player; onDone: () => void }) 
           ))}
         </select>
       </Field>
-      <Field label="Price">
+      <Field
+        label={as === "auction" ? "Price" : "Price (taken from the purse)"}
+        hint={as === "auction" ? undefined : "Not decided yet? Enter 0 and change it later with the Price button."}
+      >
         <input className={inputClass} inputMode="numeric" required value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))} />
       </Field>
+      {purseLeft !== null && (
+        <p className={cn("text-sm", overPurse ? "text-rose-300" : "text-slate-400")}>
+          {team?.name} has {money(purseLeft)} in the {POOL_LABEL[player.pool].toLowerCase()}&apos;s purse{overPurse ? " — not enough for this price" : ""}.
+        </p>
+      )}
+      {otherStar && (
+        <p className="text-sm text-rose-300">
+          {team?.name} already has a star player ({otherStar.name}). Remove them first, or pick another team.
+        </p>
+      )}
       <div className="flex justify-end">
-        <Button type="submit" variant="primary" busy={busy === "assign"} disabled={!teamId || price === ""}>
-          Assign
+        <Button type="submit" variant="primary" busy={busy === "assign"} disabled={!teamId || price === "" || overPurse || !!otherStar}>
+          {sold ? "Save" : "Assign"}
         </Button>
       </div>
     </form>
+  );
+}
+
+/** Each team's owners and star player, with their prices; tap one to change it. */
+function SigningsSummary({ onEdit }: { onEdit: (p: Player) => void }) {
+  const { teams, players } = useAuction();
+  if (teams.length === 0) return null;
+  const signed = players.filter((p) => p.signing && p.status === "sold");
+  return (
+    <section className="mb-4 rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/10" aria-labelledby="signings-h">
+      <h3 id="signings-h" className="font-bold">Owners &amp; star players</h3>
+      <p className="mb-2 text-xs text-slate-400">
+        Put them on their team with <b>Assign</b> (or <b>Owner / star</b> for someone already assigned). Their price comes out of the purse;
+        they don&apos;t count towards the squad, Top buys or results.
+      </p>
+      <ul className="divide-y divide-white/5 text-sm">
+        {teams.map((t) => {
+          const mine = signed.filter((p) => p.sold_team_id === t.id).sort((a, b) => (a.signing === b.signing ? 0 : a.signing === "owner" ? -1 : 1));
+          const total = mine.reduce((sum, p) => sum + (p.sold_price ?? 0), 0);
+          return (
+            <li key={t.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2">
+              <TeamBadge team={t} className="w-32 shrink-0" />
+              {mine.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => onEdit(p)}
+                  className="flex items-center gap-1.5 rounded-lg bg-white/5 px-2 py-1 hover:bg-white/10"
+                  title="Change price, team or role"
+                >
+                  <SigningBadge signing={p.signing!} />
+                  <span className="font-semibold">{p.name}</span>
+                  <span className="tabular-nums text-slate-300">{money(p.sold_price)}</span>
+                </button>
+              ))}
+              {!mine.some((p) => p.signing === "owner") && <span className="text-xs text-slate-500">No owner yet</span>}
+              {!mine.some((p) => p.signing === "star") && <span className="text-xs text-amber-300">No star yet</span>}
+              {total > 0 && <span className="ml-auto text-xs text-slate-400">From purse: {money(total)}</span>}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 

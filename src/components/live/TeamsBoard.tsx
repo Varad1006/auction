@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { cn, money } from "@/lib/format";
 import { POOL_LABEL, POOLS, type Pool } from "@/lib/types";
+import { bySigningThenPrice, extrasText, SigningBadge } from "./SigningBadge";
 import { useAuction } from "./useAuction";
 
 const num = (n: number | undefined) => (n === undefined ? "–" : n.toLocaleString("en-IN"));
@@ -46,7 +47,7 @@ export function TeamsBoard({
           <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-x-4 border-b border-white/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
             <span>Team</span>
             <span className="text-right">Purse left</span>
-            <span className="text-right">Squad</span>
+            <span className="text-right">Bought</span>
             <span className="text-right">Max bid</span>
           </div>
           <ul className="divide-y divide-white/5 text-sm">
@@ -82,7 +83,7 @@ export function TeamsBoard({
           const s = sums.get(t.id);
           const roster = players
             .filter((p) => p.status === "sold" && p.sold_team_id === t.id && p.pool === pool)
-            .sort((a, b) => (b.sold_price ?? 0) - (a.sold_price ?? 0));
+            .sort(bySigningThenPrice);
           const leading = state?.phase === "bidding" && state.leading_team_id === t.id;
           const expanded = open === t.id;
           return (
@@ -113,9 +114,10 @@ export function TeamsBoard({
                       </span>
                       <span className="whitespace-nowrap text-right text-xs leading-5 text-slate-400">
                         <span className="block">
-                          Squad <b className="tabular-nums text-slate-100">{s.squadCount}/{s.maxSquad}</b>
+                          Bought <b className="tabular-nums text-slate-100">{s.squadCount}/{s.maxSquad}</b>
                           <span className="text-slate-500"> (min {s.minSquad})</span>
                         </span>
+                        {extrasText(s) && <span className="block text-slate-500">+ {extrasText(s)}</span>}
                         <span className="block">
                           Max bid <b className="tabular-nums text-slate-100">{money(s.maxBid)}</b>
                         </span>
@@ -130,6 +132,7 @@ export function TeamsBoard({
                   {roster.map((p) => (
                     <li key={p.id} className="flex justify-between py-1">
                       <span>
+                        {p.signing && <SigningBadge signing={p.signing} className="mr-1.5" />}
                         {p.name} <span className="text-slate-500">· {p.role}</span>
                       </span>
                       <span className="tabular-nums text-slate-300">{money(p.sold_price)}</span>

@@ -23,7 +23,7 @@ const config: PoolConfig = {
 const player = (id: string, over: Partial<Player> = {}): Player => ({
   id, name: id.toUpperCase(), pool: "men", role: "Batter", batting_style: null, bowling_style: null,
   grade: "C", base_price: 10, photo_url: null, notes: null, details: [], status: "pool", sold_team_id: null,
-  sold_price: null, decided_round: null, waitlisted_at: null, created_at: "", updated_at: "", ...over,
+  sold_price: null, decided_round: null, waitlisted_at: null, signing: null, created_at: "", updated_at: "", ...over,
 });
 
 const state = (over: Partial<AuctionState> = {}): AuctionState => ({

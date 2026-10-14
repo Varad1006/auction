@@ -14,7 +14,7 @@ const config: PoolConfig = {
 const player = (over: Partial<Player> = {}): Player => ({
   id: "p1", name: "P", pool: "men", role: "Batter", batting_style: null, bowling_style: null,
   grade: "C", base_price: 20, photo_url: null, notes: null, details: [], status: "pool", sold_team_id: null,
-  sold_price: null, decided_round: null, waitlisted_at: null, created_at: "", updated_at: "", ...over,
+  sold_price: null, decided_round: null, waitlisted_at: null, signing: null, created_at: "", updated_at: "", ...over,
 });
 
 const state = (over: Partial<AuctionState> = {}): AuctionState => ({
@@ -40,6 +40,19 @@ describe("bid rules (mirror of SQL)", () => {
     const s = teamPoolSummary("t1", "men", config, [], [player({ id: "x", status: "sold", sold_team_id: "t1", sold_price: 10 })]);
     // remaining 90, after this buy 1 more slot needed at 20 -> max 70
     expect(s).toMatchObject({ remaining: 90, squadCount: 1, maxBid: 70 });
+  });
+
+  it("takes owners and the star player from the purse but not the squad", () => {
+    const s = teamPoolSummary("t1", "men", { ...config, purse: 1000 }, [], [
+      player({ id: "o1", status: "sold", sold_team_id: "t1", sold_price: 100, signing: "owner" }),
+      player({ id: "o2", status: "sold", sold_team_id: "t1", sold_price: 50, signing: "owner" }),
+      player({ id: "s1", status: "sold", sold_team_id: "t1", sold_price: 200, signing: "star" }),
+      player({ id: "b1", status: "sold", sold_team_id: "t1", sold_price: 30 }),
+      player({ id: "x", status: "sold", sold_team_id: "t2", sold_price: 999, signing: "star" }),
+    ]);
+    expect(s).toMatchObject({ spent: 380, remaining: 620, squadCount: 1, owners: 2, stars: 1, teamSize: 4 });
+    // Reserve for the minimum squad (3) counts auction buys only: 1 more after this bid.
+    expect(s.maxBid).toBe(620 - 20);
   });
 
   it("applies per-team overrides", () => {

@@ -179,7 +179,7 @@ export function DisplayPage() {
               <span>{POOL_LABEL[player?.pool ?? pool]} · Team</span>
               <span className="text-right">Purse left</span>
               <span className="text-right">Max bid</span>
-              <span className="text-right">Squad</span>
+              <span className="text-right">Bought</span>
             </div>
             <ul className="divide-y divide-white/5">
               {teams.map((t) => {

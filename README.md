@@ -61,7 +61,8 @@ They also show that removing the lock breaks this.
 - Opening bid ≥ the player's base price. After that, ≥ current bid +
   increment. Increments can be flat (`5`) or tiered (`0:5, 100:10`).
 - A team can't outbid itself.
-- The squad must not be full (per-pool max squad).
+- The squad must not be full (per-pool max squad). The squad counts players
+  bought in the auction only; owners and the star player don't use places.
 - The bid can't exceed the remaining purse.
 - **Reserve rule:** after the bid, the team must still afford its minimum
   squad at the pool's lowest base price.
@@ -91,6 +92,19 @@ reveal. The admin then taps **Open bidding**.
 - **Assign** (Players page) sells a leftover player at a fixed price after the
   final round. It is logged and can be undone.
 - Every admin action is recorded in `audit_log`.
+
+### Owners and star players
+
+Each team's playing owner(s) and its one star player join the team outside the
+auction. In **Admin → Players**, **Assign** a player and choose **Team owner** or
+**★ Star player** (for someone already assigned by hand, use **Owner / star**).
+Their price comes out of the team's purse and can be changed at any time with
+**Price** or from the *Owners & star players* summary (enter 0 until it's
+decided); **Remove** takes them off the team. They don't count towards the
+min/max squad (set those to the number each team must buy in the auction),
+aren't in Top buys or the results, can't be undone with **Undo last result**,
+and **Reset auction** leaves them on their teams. Team pages tag them and show
+the full team size, e.g. "Team of 12: 9 from the auction + 1 star · 2 owners".
 
 ## Setup (one time)
 

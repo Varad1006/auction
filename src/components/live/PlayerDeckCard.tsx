@@ -93,7 +93,9 @@ export function PlayerDeckCard({
               className="stamp absolute inset-x-4 top-[27%] rotate-[-4deg] rounded-lg px-3 py-2 text-center font-black uppercase shadow-xl ring-2 ring-white/40"
               style={{ background: soldTo.team.color, color: textOn(soldTo.team.color) }}
             >
-              <span className="block text-[10px] tracking-[0.3em]">Sold to</span>
+              <span className="block text-[10px] tracking-[0.3em]">
+                {player.signing === "owner" ? "Owner of" : player.signing === "star" ? "★ Star player of" : "Sold to"}
+              </span>
               <span className="block text-sm leading-tight [overflow-wrap:anywhere]">{soldTo.team.name}</span>
               <span className="block text-sm">{money(soldTo.price)}</span>
             </div>
