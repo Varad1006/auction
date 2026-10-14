@@ -7,7 +7,9 @@
 -- auction. They aren't auction results either, so they never appear among
 -- the results, can't be undone with "Undo", and a reset leaves them on
 -- their teams.
--- Safe to run more than once.
+-- Safe to run more than once. Function bodies fill variables with
+-- "x := (select ...)" so the Supabase SQL Editor doesn't mistake them for
+-- new tables (see 20260930000013).
 
 alter table public.players
   add column if not exists signing text check (signing in ('owner', 'star'));
@@ -40,7 +42,7 @@ $$;
 
 -- Puts a player on a team as an owner or its star player at p_price, or
 -- changes the team, role or price of one already signed. A player who was
--- assigned by hand can be turned into one (their manual result is
+-- assigned by hand can become one (their manual result is
 -- removed); a player bought in the auction can't.
 create or replace function public.admin_sign_player(
   p_actor text, p_player_id uuid, p_team_id uuid, p_signing text, p_price integer)
@@ -48,9 +50,10 @@ returns public.players language plpgsql as $$
 declare
   s public.auction_state;
   pl public.players;
-  st record;
   t public.teams;
-  v_star public.players;
+  v_star text;
+  v_purse integer;
+  v_spent integer;
   v_remaining integer;
   v_was_signing text;
 begin
@@ -61,12 +64,12 @@ begin
   if p_price is null or p_price < 0 then
     perform public.auction_fail('bad_price', 'Price must be zero or more');
   end if;
-  select * into pl from public.players where id = p_player_id for update;
-  if not found then
+  pl := (select x from public.players x where x.id = p_player_id for update);
+  if pl.id is null then
     perform public.auction_fail('not_found', 'Player not found');
   end if;
-  select * into t from public.teams where id = p_team_id;
-  if not found then
+  t := (select x from public.teams x where x.id = p_team_id);
+  if t.id is null then
     perform public.auction_fail('invalid_team', 'Unknown team');
   end if;
   if s.current_player_id = pl.id and s.phase in ('spinning', 'revealed', 'bidding') then
@@ -78,17 +81,18 @@ begin
       format('%s was bought in the auction: undo that sale first', pl.name));
   end if;
   if p_signing = 'star' then
-    select * into v_star from public.players
-     where sold_team_id = p_team_id and signing = 'star' and id <> pl.id;
-    if found then
+    v_star := (select x.name from public.players x
+                where x.sold_team_id = p_team_id and x.signing = 'star' and x.id <> pl.id limit 1);
+    if v_star is not null then
       perform public.auction_fail('star_taken',
-        format('%s already has a star player (%s)', t.name, v_star.name));
+        format('%s already has a star player (%s)', t.name, v_star));
     end if;
   end if;
 
   -- The price comes out of the purse for the player's pool.
-  select * into st from public.team_pool_status(p_team_id, pl.pool);
-  v_remaining := st.purse - st.spent
+  v_purse := (select x.purse from public.team_pool_status(p_team_id, pl.pool) x);
+  v_spent := (select x.spent from public.team_pool_status(p_team_id, pl.pool) x);
+  v_remaining := v_purse - v_spent
     + case when pl.status = 'sold' and pl.sold_team_id = p_team_id then coalesce(pl.sold_price, 0) else 0 end;
   if p_price > v_remaining then
     perform public.auction_fail('insufficient_purse',
@@ -111,15 +115,14 @@ begin
   update public.players
      set status = 'sold', sold_team_id = p_team_id, sold_price = p_price, signing = p_signing,
          decided_round = null, waitlisted_at = null
-   where id = pl.id
-  returning * into pl;
+   where id = pl.id;
 
   perform public.audit(p_actor, case when v_was_signing is null then 'sign_' || p_signing else 'update_signing' end,
     jsonb_build_object('player_id', pl.id, 'name', pl.name, 'team_id', p_team_id, 'signing', p_signing, 'price', p_price));
-  return pl;
+  return (select x from public.players x where x.id = p_player_id);
 end $$;
 
--- Takes an owner or star player off their team and back into the pool.
+-- Takes an owner or star player off their team and back to the pool.
 create or replace function public.admin_release_signing(p_actor text, p_player_id uuid)
 returns public.players language plpgsql as $$
 declare
@@ -127,8 +130,8 @@ declare
   pl public.players;
 begin
   s := public.auction_lock();
-  select * into pl from public.players where id = p_player_id for update;
-  if not found then
+  pl := (select x from public.players x where x.id = p_player_id for update);
+  if pl.id is null then
     perform public.auction_fail('not_found', 'Player not found');
   end if;
   if pl.signing is null then
@@ -136,10 +139,9 @@ begin
   end if;
   update public.players
      set status = 'pool', sold_team_id = null, sold_price = null, signing = null, decided_round = null
-   where id = pl.id
-  returning * into pl;
+   where id = pl.id;
   perform public.audit(p_actor, 'release_signing', jsonb_build_object('player_id', pl.id, 'name', pl.name));
-  return pl;
+  return (select x from public.players x where x.id = p_player_id);
 end $$;
 
 -- Resetting the auction leaves owners, stars and the waitlist alone.
@@ -162,9 +164,8 @@ begin
    where signing is null
      and (status::text in ('sold', 'unsold') or (status::text = 'pool' and decided_round is not null));
   update public.pool_config set current_round = 1 where true;
-  select * into s from public.auction_state where id = 1;
   perform public.audit(p_actor, 'reset', '{}'::jsonb);
-  return s;
+  return (select a from public.auction_state a where a.id = 1);
 end $$;
 
 do $$
