@@ -91,6 +91,7 @@ let row = (await read(`players?select=status,signing,sold_team_id,sold_price&id=
 check(row?.status === "sold" && row.signing === "owner" && row.sold_team_id === team.id && row.sold_price === 0, "owner assigned to the team with price 0");
 
 console.log("…and sets the price later");
+await dialog.waitFor({ state: "hidden" });
 const summary = adm.getByRole("region", { name: "Owners & star players" });
 await summary.getByRole("button", { name: new RegExp(ownerName) }).click();
 await dialog.getByLabel(/Price/).fill("300");
@@ -141,6 +142,28 @@ const teamLine = await men.getByText(/^Team of \d+:/).innerText();
 check(/\+ 1 star · 2 owners/.test(teamLine), `team size counts them separately ("${teamLine}")`);
 await viewer.screenshot({ path: `${SHOTS}/s-02-team.png`, fullPage: true });
 await viewer.context().close();
+
+console.log("A team whose owners don't play buys 10");
+const other = teams[1];
+const extraStarName = unique("Tenstar");
+const extraStar = await addPlayer(extraStarName);
+for (const p of await read(`players?select=id&signing=eq.star&sold_team_id=eq.${other.id}`)) await act("player.release", { playerId: p.id });
+check((await act("team.limits", { teamId: other.id, pool: "men", purse: null, min_squad: 10, max_squad: 10 })).status === 200, `${other.name} set to buy 10 men in the auction`);
+await act("player.sign", { playerId: extraStar, teamId: other.id, signing: "star", price: 0 });
+await adm.goto(`${APP}/admin/players`);
+const otherRow = adm.getByRole("region", { name: "Owners & star players" }).getByRole("listitem").filter({ hasText: other.name });
+await otherRow.getByText(extraStarName).waitFor({ timeout: 10000 });
+const otherText = await otherRow.innerText();
+check(/Buys\s*10/.test(otherText) && /No playing owner/.test(otherText), `the summary shows "Buys 10" and no playing owner (${otherText.replace(/\s+/g, " ")})`);
+const firstText = await adm.getByRole("region", { name: "Owners & star players" }).getByRole("listitem").filter({ hasText: team.name }).innerText();
+check(!/Buys\s*10/.test(firstText), "other teams keep the pool's number");
+const page = await (await browser.newContext({ ...devices["iPhone 13"] })).newPage();
+await page.goto(`${APP}/teams/${other.id}`);
+const otherMen = page.locator("section").filter({ has: page.getByRole("heading", { name: "Men" }) });
+await otherMen.getByText(extraStarName).waitFor({ timeout: 15000 });
+check((await otherMen.getByText(/more from the auction to reach 10\./).count()) === 1, "their team page counts towards 10 from the auction");
+await page.context().close();
+await act("team.limits", { teamId: other.id, pool: "men", purse: null, min_squad: null, max_squad: null });
 
 console.log("Removing");
 const rel = await act("player.release", { playerId: starId });

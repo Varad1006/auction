@@ -101,7 +101,10 @@ auction. In **Admin → Players**, **Assign** a player and choose **Team owner**
 Their price comes out of the team's purse and can be changed at any time with
 **Price** or from the *Owners & star players* summary (enter 0 until it's
 decided); **Remove** takes them off the team. They don't count towards the
-min/max squad (set those to the number each team must buy in the auction),
+min/max squad (set those to the number each team must buy in the auction; a
+team that buys a different number, e.g. 10 because its owners don't play, gets
+its own Min/Max under **Settings → Teams → Limits**, and the summary shows each
+team's "Buys" number),
 aren't in Top buys or the results, can't be undone with **Undo last result**,
 and **Reset auction** leaves them on their teams. Team pages tag them and show
 the full team size, e.g. "Team of 12: 9 from the auction + 1 star · 2 owners".

@@ -509,20 +509,23 @@ function AssignForm({ player, initialAs, onDone }: { player: Player; initialAs: 
 
 /** Each team's owners and star player, with their prices; tap one to change it. */
 function SigningsSummary({ onEdit }: { onEdit: (p: Player) => void }) {
-  const { teams, players } = useAuction();
+  const { teams, players, summaries } = useAuction();
   if (teams.length === 0) return null;
   const signed = players.filter((p) => p.signing && p.status === "sold");
+  const men = summaries("men");
   return (
     <section className="mb-4 rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/10" aria-labelledby="signings-h">
       <h3 id="signings-h" className="font-bold">Owners &amp; star players</h3>
       <p className="mb-2 text-xs text-slate-400">
         Put them on their team with <b>Assign</b> (or <b>Owner / star</b> for someone already assigned). Their price comes out of the purse;
-        they don&apos;t count towards the squad, Top buys or results.
+        they don&apos;t count towards the squad, Top buys or results. &ldquo;Buys&rdquo; is how many men the team must buy in the auction
+        (Settings → Teams → Limits sets it per team).
       </p>
       <ul className="divide-y divide-white/5 text-sm">
         {teams.map((t) => {
           const mine = signed.filter((p) => p.sold_team_id === t.id).sort((a, b) => (a.signing === b.signing ? 0 : a.signing === "owner" ? -1 : 1));
           const total = mine.reduce((sum, p) => sum + (p.sold_price ?? 0), 0);
+          const s = men.get(t.id);
           return (
             <li key={t.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2">
               <TeamBadge team={t} className="w-32 shrink-0" />
@@ -539,9 +542,16 @@ function SigningsSummary({ onEdit }: { onEdit: (p: Player) => void }) {
                   <span className="tabular-nums text-slate-300">{money(p.sold_price)}</span>
                 </button>
               ))}
-              {!mine.some((p) => p.signing === "owner") && <span className="text-xs text-slate-500">No owner yet</span>}
+              {!mine.some((p) => p.signing === "owner") && <span className="text-xs text-slate-500">No playing owner</span>}
               {!mine.some((p) => p.signing === "star") && <span className="text-xs text-amber-300">No star yet</span>}
-              {total > 0 && <span className="ml-auto text-xs text-slate-400">From purse: {money(total)}</span>}
+              <span className="ml-auto flex gap-3 text-xs text-slate-400">
+                {s && (
+                  <span>
+                    Buys <b className="text-slate-100">{s.minSquad === s.maxSquad ? s.minSquad : `${s.minSquad}–${s.maxSquad}`}</b>
+                  </span>
+                )}
+                {total > 0 && <span>From purse: {money(total)}</span>}
+              </span>
             </li>
           );
         })}
