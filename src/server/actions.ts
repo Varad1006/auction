@@ -255,19 +255,26 @@ export const actions = {
   // ---- Players ---------------------------------------------------------------
   "player.create": action({
     roles: ["admin"],
-    input: playerFields,
+    // `waitlist` adds the player to the end of the waitlist instead of the auction.
+    input: playerFields.extend({ waitlist: z.boolean().default(false) }),
     run: async ({ me, db }, i) => {
       const cfg = await poolConfig(db, i.pool);
-      const { photo_link, ...fields } = i;
+      const { photo_link, waitlist, ...fields } = i;
       const row = {
         ...fields,
         base_price: i.base_price ?? basePriceFor(cfg, i.grade),
         ...(photo_link ? { photo_url: photoUrlFrom(photo_link) } : {}),
+        ...(waitlist ? { status: "waitlist", waitlisted_at: new Date().toISOString() } : {}),
       };
       const player = await must(db.from("players").insert(row).select().single());
-      await audit(db, me.email, "create_player", { player_id: player.id, name: i.name });
+      await audit(db, me.email, waitlist ? "create_player_waitlist" : "create_player", { player_id: player.id, name: i.name });
       return player;
     },
+  }),
+  "player.setWaitlist": action({
+    roles: ["admin"],
+    input: z.object({ id: uuid, waitlisted: z.boolean() }),
+    run: ({ me, db }, i) => rpc(db, "admin_set_waitlist", { p_actor: me.email, p_player_id: i.id, p_waitlisted: i.waitlisted }),
   }),
   "player.update": action({
     roles: ["admin"],
@@ -426,20 +433,21 @@ export const actions = {
       id: uuid,
       grade: z.enum(GRADES).default("C"),
       basePrice: money.nullish(),
-      /** Set when the admin deliberately adds someone from the waitlist. */
-      fromWaitlist: z.boolean().default(false),
+      /**
+       * Where the new player goes. "auto" puts registrations that came in
+       * after the spots were full on the waitlist, everyone else in the
+       * auction; "players" is the admin deliberately skipping the waitlist.
+       */
+      to: z.enum(["auto", "players", "waitlist"]).default("auto"),
     }),
     run: async ({ me, db }, i) => {
       const reg = await mustOne<{ photo_path: string; status: string }>(
         db.from("registrations").select("photo_path, status").eq("id", i.id).maybeSingle(),
       );
       if (reg.status !== "pending") throw new ActionError(409, "not_pending", `Registration is already ${reg.status}`);
-      if (!i.fromWaitlist) {
-        const position = waitlistPositions(await registrationQueue(db), await registrationSettings(db)).get(i.id);
-        if (position) {
-          throw new ActionError(409, "waitlisted", `This player is #${position} on the waitlist. Use "Add to auction" to add them anyway.`);
-        }
-      }
+      const waitlist =
+        i.to === "waitlist" ||
+        (i.to === "auto" && waitlistPositions(await registrationQueue(db), await registrationSettings(db)).has(i.id));
       // Copy the private photo into the public player-photos bucket.
       let photoUrl: string | null = null;
       let copiedPath: string | null = null;
@@ -459,6 +467,9 @@ export const actions = {
           p_grade: i.grade,
           p_base_price: i.basePrice ?? null,
           p_photo_url: photoUrl,
+          // Left out unless needed, so approvals keep working before the
+          // waitlist migration has been run.
+          ...(waitlist ? { p_waitlist: true } : {}),
         });
       } catch (e) {
         if (copiedPath) await db.storage.from(PHOTO_BUCKET).remove([copiedPath]);
@@ -568,6 +579,7 @@ export const actions = {
       const teamId = ownTeam(me);
       const player = await mustOne<{ status: string }>(db.from("players").select("status").eq("id", i.playerId).maybeSingle());
       if (player.status === "sold") throw new ActionError(409, "player_sold", "That player is already sold");
+      if (player.status === "waitlist") throw new ActionError(409, "waitlisted", "That player is on the waitlist, not in the auction");
       const { count } = await db.from("wishlist").select("player_id", { count: "exact", head: true }).eq("team_id", teamId);
       if ((count ?? 0) >= WISHLIST_MAX) throw new ActionError(409, "wishlist_full", `A wishlist holds at most ${WISHLIST_MAX} players`);
       // Adding a player twice keeps the first entry (and its notes).

@@ -138,6 +138,14 @@ describe("waitlist", () => {
     expect(spotsTaken(list, "men")).toBe(3);
   });
 
+  it("counts people approved onto the waitlist as ahead of later registrations", () => {
+    const list = [e("a", 1, "approved"), e("b", 2, "approved"), { ...e("c", 3, "approved"), waitlisted: true }, e("d", 4)];
+    expect([...waitlistPositions(list, { capacity_men: 2, capacity_women: null }).entries()]).toEqual([["d", 2]]);
+    // Once c is moved into the auction, d is next in line.
+    list[2] = e("c", 3, "approved");
+    expect([...waitlistPositions(list, { capacity_men: 2, capacity_women: null }).entries()]).toEqual([["d", 1]]);
+  });
+
   it("keeps men's and women's queues separate", () => {
     const list = [e("m1", 1), e("w1", 2, "pending", "women"), e("w2", 3, "pending", "women")];
     expect([...waitlistPositions(list, { capacity_men: 1, capacity_women: 1 }).entries()]).toEqual([["w2", 1]]);

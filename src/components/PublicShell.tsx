@@ -16,6 +16,7 @@ const TABS = [
   { href: "/", label: "Overview" },
   { href: "/live", label: "Live" },
   { href: "/players", label: "Players" },
+  { href: "/waitlist", label: "Waitlist" },
   { href: "/teams", label: "Teams" },
   { href: "/bids", label: "Results" },
 ];
@@ -34,7 +35,7 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
 function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const { me } = useMe();
-  const { state } = useLive();
+  const { state, waitlist } = useLive();
   const wishlist = useWishlist();
   // Owners, or an admin previewing a team's owner view.
   const ownerTeam = wishlist.enabled ? wishlist.teamId : null;
@@ -60,6 +61,9 @@ function Shell({ children }: { children: React.ReactNode }) {
               >
                 {t.href === "/live" && liveNow && <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />}
                 {t.label}
+                {t.href === "/waitlist" && waitlist.length > 0 && (
+                  <span className="rounded-full bg-sky-400/20 px-1.5 text-[11px] font-bold tabular-nums text-sky-200">{waitlist.length}</span>
+                )}
               </Link>
             );
           })}

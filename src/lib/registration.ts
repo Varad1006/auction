@@ -70,13 +70,16 @@ export interface QueueEntry {
   gender: Gender;
   status: "pending" | "approved" | "rejected";
   created_at: string;
+  /** Approved onto the players' waitlist rather than into the auction. */
+  waitlisted?: boolean;
 }
 
 /**
  * Waitlist positions (1 = next in line) for pending registrations beyond a
  * pool's spots. Spots go in submission order; rejected registrations don't
  * take one, so the next person moves up. Approved players always keep their
- * place (an admin may add someone from the waitlist on purpose).
+ * place (an admin may add someone from the waitlist on purpose), and those
+ * approved onto the waitlist stay ahead of later registrations in it.
  */
 export function waitlistPositions(
   entries: QueueEntry[],
@@ -91,7 +94,8 @@ export function waitlistPositions(
       .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
     let position = 0;
     queue.forEach((e, i) => {
-      if (i >= cap && e.status === "pending") out.set(e.id, ++position);
+      if (e.status === "approved" && e.waitlisted) position++;
+      else if (i >= cap && e.status === "pending") out.set(e.id, ++position);
     });
   }
   return out;

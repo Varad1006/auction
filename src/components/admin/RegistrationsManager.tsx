@@ -28,6 +28,8 @@ interface Registration {
   status: "pending" | "approved" | "rejected";
   /** Place in the waitlist (pending registrations after the pool's spots). */
   waitlist_position: number | null;
+  /** Approved onto the players' waitlist (not in the auction yet). */
+  waitlisted: boolean;
   photo_url: string | null;
   receipt_url: string | null;
   receipt_path: string | null;
@@ -125,7 +127,7 @@ function Registrations({
               busy={busy === "all"}
               onClick={async () => {
                 if (!confirm(`Approve all ${pending.length} pending registrations (not the waitlist) and add them to the player pool?`)) return;
-                for (const r of pending) await callAction("registration.approve", { id: r.id }).catch(() => null);
+                for (const r of pending) await callAction("registration.approve", { id: r.id, to: "players" }).catch(() => null);
                 await act("all", async () => null, "Pending registrations approved");
               }}
             >
@@ -209,6 +211,8 @@ function RegistrationRow({
             <span className="rounded bg-sky-400/20 px-1.5 py-0.5 text-[11px] font-bold uppercase text-sky-200">
               Waitlist #{r.waitlist_position} · {POOL_LABEL[r.gender]}
             </span>
+          ) : r.waitlisted ? (
+            <span className="rounded bg-sky-400/20 px-1.5 py-0.5 text-[11px] font-bold uppercase text-sky-200">Approved · on waitlist</span>
           ) : (
             <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-bold uppercase", {
               pending: "bg-amber-400/20 text-amber-300",
@@ -246,28 +250,44 @@ function RegistrationRow({
                 size="sm"
                 variant="success"
                 busy={busy === `ok-${r.id}`}
-                onClick={() => act(`ok-${r.id}`, () => callAction("registration.approve", { id: r.id }), `${r.full_name} added to players`)}
+                onClick={() => act(`ok-${r.id}`, () => callAction("registration.approve", { id: r.id, to: "players" }), `${r.full_name} added to players`)}
               >
                 Approve
               </Button>
             ) : (
-              <Button
-                size="sm"
-                variant="primary"
-                busy={busy === `ok-${r.id}`}
-                onClick={() =>
-                  confirm(
-                    `${r.full_name} is #${r.waitlist_position} on the ${POOL_LABEL[r.gender].toLowerCase()}'s waitlist. Add them to the auction anyway? They'll be on the wheel.`,
-                  ) &&
-                  act(
-                    `ok-${r.id}`,
-                    () => callAction("registration.approve", { id: r.id, fromWaitlist: true }),
-                    `${r.full_name} added from the waitlist`,
-                  )
-                }
-              >
-                Add to auction
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  variant="success"
+                  busy={busy === `ok-${r.id}`}
+                  onClick={() =>
+                    act(
+                      `ok-${r.id}`,
+                      () => callAction("registration.approve", { id: r.id, to: "waitlist" }),
+                      `${r.full_name} approved onto the waitlist`,
+                    )
+                  }
+                >
+                  Approve to waitlist
+                </Button>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  busy={busy === `in-${r.id}`}
+                  onClick={() =>
+                    confirm(
+                      `${r.full_name} is #${r.waitlist_position} on the ${POOL_LABEL[r.gender].toLowerCase()}'s waitlist. Skip the waitlist and add them to the auction? They'll be on the wheel.`,
+                    ) &&
+                    act(
+                      `in-${r.id}`,
+                      () => callAction("registration.approve", { id: r.id, to: "players" }),
+                      `${r.full_name} added to players`,
+                    )
+                  }
+                >
+                  Add to auction
+                </Button>
+              </>
             )}
             <Button
               size="sm"

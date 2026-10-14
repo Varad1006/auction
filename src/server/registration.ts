@@ -30,9 +30,20 @@ export async function registrationSettings(db: SupabaseClient): Promise<Registra
 
 /** Every registration's place in line (for spots and the waitlist). */
 export async function registrationQueue(db: SupabaseClient): Promise<QueueEntry[]> {
-  const { data, error } = await db.from("registrations").select("id, gender, status, created_at");
+  const { data, error } = await db.from("registrations").select("id, gender, status, created_at, player_id");
   if (error) throw new Error(`Loading registrations failed: ${error.message}`);
-  return data as QueueEntry[];
+  return withWaitlisted(db, data);
+}
+
+/** Marks the approved registrations whose player is on the waitlist. */
+export async function withWaitlisted<R extends { player_id: string | null }>(
+  db: SupabaseClient,
+  rows: R[],
+): Promise<(R & { waitlisted: boolean })[]> {
+  const { data, error } = await db.from("players").select("id").eq("status", "waitlist");
+  // Before the waitlist migration the status doesn't exist: nobody is on it.
+  const ids = new Set(error ? [] : data.map((p) => p.id as string));
+  return rows.map((r) => ({ ...r, waitlisted: !!r.player_id && ids.has(r.player_id) }));
 }
 
 /** Checks a file's first bytes, so a renamed file can't pose as an image/PDF. */

@@ -376,6 +376,102 @@ describe.skipIf(!ADMIN_URL)("auction database", () => {
     });
   });
 
+  describe("waitlist", () => {
+    const setWaitlist = (id: string, on: boolean) => q("select * from admin_set_waitlist('a', $1, $2)", [id, on]);
+
+    it("keeps waitlisted players off the wheel, the block and manual assignment", async () => {
+      const inPool = await addPlayer("In Pool");
+      const waiting = await addPlayer("Waiting");
+      const [row] = await setWaitlist(waiting, true);
+      expect(row).toMatchObject({ status: "waitlist" });
+      expect(row.waitlisted_at).not.toBeNull();
+
+      for (let i = 0; i < 5; i++) {
+        const s = (await q("select * from auction_spin('a')"))[0];
+        expect(s.current_player_id).toBe(inPool);
+        expect(s.spin_candidates).toEqual([inPool]);
+        await q("select auction_return_to_pool('a')");
+      }
+      expect((await errorOf(q("select auction_select_player('a', $1)", [waiting]))).hint).toBe("not_in_pool");
+      expect((await errorOf(q("select auction_assign_player('a', $1, $2, 20)", [waiting, teams[0].id]))).hint).toBe("waitlisted");
+
+      // Not counted as left in the round either.
+      await putOnBlock(inPool);
+      await q("select auction_mark_unsold('a', $1)", [inPool]);
+      await q("select auction_advance_round('a', 'men')");
+      expect((await q("select status from players where id = $1", [waiting]))[0].status).toBe("waitlist");
+    });
+
+    it("moves players between the waitlist and the auction", async () => {
+      const p = await addPlayer("Mover");
+      await setWaitlist(p, true);
+      expect((await setWaitlist(p, true))[0].status).toBe("waitlist"); // idempotent
+      const [back] = await setWaitlist(p, false);
+      expect(back).toMatchObject({ status: "pool", waitlisted_at: null });
+      expect((await errorOf(setWaitlist(p, false))).hint).toBe("not_waitlisted");
+      expect((await q("select action from audit_log where details->>'player_id' = $1 order by id", [p])).map((r) => r.action)).toEqual([
+        "waitlist_add",
+        "waitlist_remove",
+      ]);
+    });
+
+    it("won't waitlist a player on the block or already auctioned", async () => {
+      const onBlock = await addPlayer("On Block");
+      await q("select auction_select_player('a', $1)", [onBlock]);
+      expect((await errorOf(setWaitlist(onBlock, true))).hint).toBe("on_block");
+      await q("select auction_open_bidding('a')");
+      await q("select auction_mark_unsold('a', $1)", [onBlock]);
+      expect((await errorOf(setWaitlist(onBlock, true))).hint).toBe("already_auctioned");
+    });
+
+    it("drops a waitlisted player from the last spin's candidates", async () => {
+      const a = await addPlayer("Cand A");
+      const b = await addPlayer("Cand B");
+      const s = (await q("select * from auction_spin('a')"))[0];
+      const other = s.current_player_id === a ? b : a;
+      await q("select auction_return_to_pool('a')");
+      await q("update auction_state set spin_candidates = $1 where id = 1", [[a, b]]);
+      await setWaitlist(other, true);
+      expect((await state()).spin_candidates).not.toContain(other);
+    });
+
+    it("leaves the waitlist alone when the auction is reset", async () => {
+      const sold = await addPlayer("Reset Sold");
+      const waiting = await addPlayer("Reset Waiting");
+      await setWaitlist(waiting, true);
+      await putOnBlock(sold);
+      await bid(teams[0].id, sold, 20);
+      await q("select auction_sell('a', $1)", [sold]);
+      await q("select auction_reset('a')");
+      const rows = await q<{ id: string; status: string }>("select id, status from players order by name");
+      expect(rows).toEqual([
+        { id: sold, status: "pool" },
+        { id: waiting, status: "waitlist" },
+      ]);
+    });
+
+    it("approves a registration onto the waitlist in registration order", async () => {
+      const reg = await q<{ id: string; created_at: Date }>(
+        `insert into registrations (full_name, email, phone, flat_number, age, gender, role, photo_path, declaration, created_at)
+         values ('Late Reg', 'late@example.com', '9999999998', 'A-2', 30, 'men', 'Bowler', 'x/photo.jpg', true, now() - interval '2 days')
+         returning id, created_at`,
+      );
+      const id = (await q<{ id: string }>("select admin_approve_registration('a', $1, 'B', null, null, p_waitlist => true) as id", [reg[0].id]))[0].id;
+      const pl = (await q("select status, waitlisted_at, base_price from players where id = $1", [id]))[0];
+      expect(pl.status).toBe("waitlist");
+      expect((pl.waitlisted_at as Date).toISOString()).toBe(reg[0].created_at.toISOString());
+      expect(pl.base_price).toBe(30);
+      // The old 5-argument call still adds straight to the auction.
+      const reg2 = await q<{ id: string }>(
+        `insert into registrations (full_name, email, phone, flat_number, age, gender, role, photo_path, declaration)
+         values ('On Time', 'ontime@example.com', '9999999997', 'A-3', 30, 'men', 'Batter', 'x/photo.jpg', true) returning id`,
+      );
+      const id2 = (await q<{ id: string }>("select admin_approve_registration('a', $1, 'C', null, null) as id", [reg2[0].id]))[0].id;
+      expect((await q("select status from players where id = $1", [id2]))[0].status).toBe("pool");
+      await q("delete from registrations where true");
+    });
+  });
+
   describe("concurrency", () => {
     it("accepts exactly one of many simultaneous identical bids", async () => {
       const p1 = await addPlayer("Race");

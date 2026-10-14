@@ -186,9 +186,16 @@ orders).
 
 **Spots and waitlist:** set *Men's spots* / *Women's spots* in the form settings. Spots go first come
 first served (by submission time); a rejected registration frees its spot for the next person. Later
-registrations are accepted but told their waitlist position, show under the **Waitlist** tab, and
-aren't added to the auction (so never on the wheel) until you press **Add to auction**. "Approve all
-pending" skips the waitlist. The form shows how many spots are left.
+registrations are accepted but told their waitlist position and show under the **Waitlist** filter.
+**Approve to waitlist** puts them on the public waitlist (in registration order); **Add to auction**
+skips it. "Approve all pending" skips the waitlist. The form shows how many spots are left.
+
+**Public waitlist:** the **Waitlist** tab shows everyone, in order, the players waiting for a place.
+Waitlisted players aren't on the wheel, can't be picked, assigned or wishlisted, and don't appear in
+the Players list or counts. In **Admin → Players**, **+ Add to waitlist** adds someone by hand, the
+*Waitlist* status filter lists them, **Move to players** puts one into the auction (the current
+round of their pool) and **To waitlist** takes a not-yet-auctioned player out again. Admins also get
+**Move to players** on the public Waitlist page. Resetting the auction leaves the waitlist alone.
 
 **New registration alerts:** at the top of **Admin → Registrations**, tap **Turn on alerts** on
 your phone (on iPhone, in the installed app). Every admin who does this gets a notification with

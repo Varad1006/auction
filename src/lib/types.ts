@@ -9,7 +9,7 @@ export const GRADES: Grade[] = ["A", "B", "C"];
 export type PlayerRole = "Batter" | "Bowler" | "All-rounder" | "Wicket-keeper";
 export const PLAYER_ROLES: PlayerRole[] = ["Batter", "Bowler", "All-rounder", "Wicket-keeper"];
 
-export type PlayerStatus = "pool" | "sold" | "unsold";
+export type PlayerStatus = "pool" | "sold" | "unsold" | "waitlist";
 export type Phase = "idle" | "spinning" | "revealed" | "bidding" | "sold" | "unsold";
 export type Role = "admin" | "owner" | "viewer";
 
@@ -70,6 +70,8 @@ export interface Player {
   sold_team_id: string | null;
   sold_price: number | null;
   decided_round: number | null;
+  /** Set while on the waitlist: the queue order. */
+  waitlisted_at: string | null;
   created_at: string;
   updated_at: string;
 }

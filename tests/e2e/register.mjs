@@ -308,14 +308,73 @@ check(waitPush && adminPhone.read(waitPush).title === `⏳ Waitlist #1: ${lateNa
 const after1 = await (await fetch(`${APP}/api/admin/registrations`, { headers: { cookie: cookieHeader(admin) } })).json();
 const lateReg = after1.registrations.find((r) => r.full_name === lateName);
 check(lateReg?.waitlist_position === 1, "the admin list shows the waitlist position");
-const blocked = await act("registration.approve", { id: lateReg.id });
-check(blocked.status === 409 && blocked.body?.code === "waitlisted", "a plain approve won't take someone off the waitlist");
-const lateRest = await (await fetch(`${SB_URL}/rest/v1/players?select=id&name=eq.${encodeURIComponent(lateName)}`, { headers: { apikey: ANON, authorization: `Bearer ${ANON}` } })).json();
-check(lateRest.length === 0, "waitlisted players aren't in the auction (so not on the wheel)");
-const fromWaitlist = await act("registration.approve", { id: lateReg.id, fromWaitlist: true });
-check(fromWaitlist.status === 200, "the admin can add them from the waitlist");
-const added = await (await fetch(`${SB_URL}/rest/v1/players?select=status&id=eq.${fromWaitlist.body?.data}`, { headers: { apikey: ANON, authorization: `Bearer ${ANON}` } })).json();
-check(added[0]?.status === "pool", "once added, they're in the pool for the wheel");
+const publicRead = async (query) => (await fetch(`${SB_URL}/rest/v1/${query}`, { headers: { apikey: ANON, authorization: `Bearer ${ANON}` } })).json();
+const approved = await act("registration.approve", { id: lateReg.id });
+const lateId = approved.body?.data;
+check(approved.status === 200, "approving a waitlisted registration works");
+const lateRow = (await publicRead(`players?select=status,waitlisted_at&id=eq.${lateId}`))[0];
+check(lateRow?.status === "waitlist" && lateRow.waitlisted_at, "…and puts them on the public waitlist, not in the auction");
+const after2 = await (await fetch(`${APP}/api/admin/registrations`, { headers: { cookie: cookieHeader(admin) } })).json();
+check(after2.registrations.find((r) => r.id === lateReg.id)?.waitlisted === true, "the admin list marks them approved onto the waitlist");
+
+console.log("Public waitlist");
+const manualName = `Walk ${Date.now().toString(26).replace(/\d/g, (d) => "abcdefghij"[d])}`;
+const manual = await act("player.create", { name: manualName, pool: "men", role: "Bowler", waitlist: true });
+check(manual.status === 200 && manual.body?.data?.status === "waitlist", "the admin adds a player straight to the waitlist");
+const manualId = manual.body?.data?.id;
+check((await actAs(owner, "player.setWaitlist", { id: manualId, waitlisted: false })).status === 403, "owners can't move players off the waitlist");
+const star = await actAs(owner, "wishlist.add", { playerId: manualId });
+check(star.status === 409 && star.body?.code === "waitlisted", "owners can't wishlist a waitlisted player");
+
+const viewer = await (await browser.newContext({ ...devices["iPhone 13"] })).newPage();
+await viewer.goto(`${APP}/waitlist`);
+const wl = viewer.getByRole("list", { name: "Men waitlist" });
+await wl.getByText(manualName).waitFor({ timeout: 15000 });
+const order = await wl.locator("li").allInnerTexts();
+const lateAt = order.findIndex((t) => t.includes(lateName));
+const manualAt = order.findIndex((t) => t.includes(manualName));
+check(lateAt !== -1 && manualAt > lateAt, `anyone can see the waitlist, in order (#${lateAt + 1} ${lateName}, #${manualAt + 1} ${manualName})`);
+check((await viewer.getByRole("button", { name: "Move to players" }).count()) === 0, "visitors don't get the move button");
+await viewer.screenshot({ path: `${SHOTS}/r-05-waitlist.png`, fullPage: true });
+await viewer.goto(`${APP}/players?pool=men`);
+await viewer.getByRole("button", { name: /^All/ }).click();
+await viewer.getByText("Loading players…").waitFor({ state: "detached" });
+check((await viewer.getByText(manualName).count()) === 0 && (await viewer.getByText(lateName).count()) === 0, "waitlisted players aren't in the players list");
+await act("auction.setPool", { pool: "men" });
+const spin = await act("auction.spin", {});
+check(spin.status === 200 && ![lateId, manualId].some((id) => spin.body?.data?.spin_candidates?.includes(id)), "…or on the wheel");
+await act("auction.returnToPool", {});
+
+// The admin moves a player off the waitlist from the public page.
+await admPage.goto(`${APP}/waitlist`);
+const adminRow = admPage.getByRole("listitem").filter({ hasText: manualName });
+await adminRow.getByRole("button", { name: "Move to players" }).click();
+await admPage.getByText(`${manualName} moved to players`).waitFor({ timeout: 10000 });
+check((await publicRead(`players?select=status&id=eq.${manualId}`))[0]?.status === "pool", "the admin moves a player from the waitlist to the players list");
+await viewer.goto(`${APP}/players?pool=men`);
+await viewer.getByText(manualName).waitFor({ timeout: 10000 });
+check(true, "…and they show up in the players list");
+check((await act("player.setWaitlist", { id: manualId, waitlisted: true })).status === 200, "and can be put back on the waitlist");
+
+// Admin → Players: add someone to the waitlist with the form.
+const formName = `Form ${Date.now().toString(26).replace(/\d/g, (d) => "abcdefghij"[d])}`;
+await admPage.goto(`${APP}/admin/players`);
+await admPage.getByRole("button", { name: "+ Add to waitlist" }).click();
+const dialog = admPage.getByRole("dialog");
+await dialog.getByLabel("Name").fill(formName);
+check(await dialog.getByRole("checkbox", { name: /Add to the waitlist/ }).isChecked(), "the waitlist form starts with 'Add to the waitlist' ticked");
+await dialog.getByRole("button", { name: "Add to waitlist" }).click();
+await admPage.getByText("Added to the waitlist").waitFor({ timeout: 10000 });
+await admPage.keyboard.press("Escape");
+await admPage.getByLabel("Status").selectOption("waitlist");
+const formRow = admPage.getByRole("listitem").filter({ hasText: formName });
+await formRow.waitFor({ timeout: 10000 });
+check((await formRow.getByText(/Waitlist #\d+/).count()) === 1, "Admin → Players lists them under the Waitlist filter with their place");
+const formId = (await publicRead(`players?select=id,status&name=eq.${encodeURIComponent(formName)}`))[0];
+check(formId?.status === "waitlist", "the form adds them with waitlist status");
+await admPage.screenshot({ path: `${SHOTS}/r-06-admin-waitlist.png`, fullPage: true });
+if (formId) await act("player.delete", { id: formId.id });
+await viewer.context().close();
 await settings(true);
 await browser.close();
 
@@ -333,7 +392,7 @@ check(cleaned.status === 200 && after.registrations.length === 0, `admin deletes
 check((await (await fetch(`${SB_URL}/rest/v1/players?select=id&limit=1`, { headers: { apikey: ANON, authorization: `Bearer ${ANON}` } })).json()).length === 1, "players are kept when only registrations are cleared");
 await act("registration.payments", { items: [] });
 // Remove the players this run created, so reruns start clean.
-for (const id of [ok.body?.data, fromWaitlist.body?.data]) if (id) await act("player.delete", { id });
+for (const id of [ok.body?.data, lateId, manualId]) if (id) await act("player.delete", { id });
 await act("push.unsubscribe", { endpoint: adminPhone.sub.endpoint });
 await actAs(owner, "push.unsubscribe", { endpoint: ownerPhone.sub.endpoint });
 pushServer.close();

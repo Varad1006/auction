@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { jsonError, requireRole } from "@/server/http";
 import { vapidKeys } from "@/server/push";
 import { capacityFor, spotsTaken, waitlistPositions } from "@/lib/registration";
-import { REG_BUCKET, registrationSettings } from "@/server/registration";
+import { REG_BUCKET, registrationSettings, withWaitlisted } from "@/server/registration";
 import { adminSupabase } from "@/server/supabase";
 
 export const dynamic = "force-dynamic";
@@ -12,8 +12,9 @@ export async function GET() {
   const guard = await requireRole(["admin"]);
   if ("response" in guard) return guard.response;
   const db = adminSupabase();
-  const { data, error } = await db.from("registrations").select("*").order("created_at", { ascending: false });
+  const { data: rows, error } = await db.from("registrations").select("*").order("created_at", { ascending: false });
   if (error) return jsonError(500, "internal", "Could not load registrations");
+  const data = await withWaitlisted(db, rows);
   const paths = data.flatMap((r) => [r.photo_path, r.receipt_path].filter(Boolean)) as string[];
   const urls = new Map<string, string>();
   if (paths.length > 0) {

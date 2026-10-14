@@ -13,37 +13,42 @@ import { useAuction } from "../live/useAuction";
 import { useToast } from "../Toast";
 import { Button, Card, Field, inputClass, Modal, useRunner } from "../ui";
 
-type StatusFilter = "all" | "pool" | "sold" | "unsold";
+type StatusFilter = "all" | "pool" | "sold" | "unsold" | "waitlist";
 
 export function PlayersManager() {
-  const { players, teamById, state, ready } = useAuction();
+  const { players, waitlist, teamById, state, ready } = useAuction();
   const { busy, run } = useRunner();
   const [pool, setPool] = useState<Pool | "all">("all");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [q, setQ] = useState("");
-  const [editing, setEditing] = useState<Player | "new" | null>(null);
+  const [editing, setEditing] = useState<Player | "new" | "new-waitlist" | null>(null);
   const [assigning, setAssigning] = useState<Player | null>(null);
   const [importing, setImporting] = useState(false);
 
+  // "Any status" means the auction's players; the waitlist has its own filter.
   const list = useMemo(
     () =>
-      players
+      (status === "waitlist" ? waitlist : players)
         .filter((p) => (pool === "all" || p.pool === pool) && (status === "all" || p.status === status))
         .filter((p) => !q || p.name.toLowerCase().includes(q.toLowerCase()))
-        .sort((a, b) => a.pool.localeCompare(b.pool) || a.name.localeCompare(b.name)),
-    [players, pool, status, q],
+        .sort((a, b) => a.pool.localeCompare(b.pool) || (status === "waitlist" ? 0 : a.name.localeCompare(b.name))),
+    [players, waitlist, pool, status, q],
   );
+  const waitlistSpot = (p: Player) => waitlist.filter((w) => w.pool === p.pool).indexOf(p) + 1;
 
   const onBlock = (p: Player) => state?.current_player_id === p.id && ["spinning", "revealed", "bidding"].includes(state.phase);
 
   return (
     <div className="space-y-4">
       <Card
-        title={`Players (${players.length})`}
+        title={`Players (${players.length})${waitlist.length ? ` · ${waitlist.length} on waitlist` : ""}`}
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={() => setImporting(true)}>
               Bulk import
+            </Button>
+            <Button size="sm" onClick={() => setEditing("new-waitlist")}>
+              + Add to waitlist
             </Button>
             <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
               + Add player
@@ -65,6 +70,7 @@ export function PlayersManager() {
             <option value="pool">In pool</option>
             <option value="sold">Sold</option>
             <option value="unsold">Unsold</option>
+            <option value="waitlist">Waitlist ({waitlist.length})</option>
           </select>
           <input className={inputClass} placeholder="Search name…" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
@@ -91,7 +97,9 @@ export function PlayersManager() {
                   </p>
                 </div>
                 <div className="hidden shrink-0 text-right text-xs sm:block">
-                  {p.status === "sold" && team ? (
+                  {p.status === "waitlist" ? (
+                    <span className="rounded bg-sky-400/20 px-2 py-0.5 font-semibold uppercase text-sky-200">Waitlist #{waitlistSpot(p)}</span>
+                  ) : p.status === "sold" && team ? (
                     <span className="flex items-center gap-2">
                       <TeamBadge team={team} /> <b className="tabular-nums">{money(p.sold_price)}</b>
                     </span>
@@ -101,13 +109,39 @@ export function PlayersManager() {
                     </span>
                   )}
                 </div>
-                <div className="flex shrink-0 gap-1">
+                <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                  {p.status === "waitlist" && (
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      busy={busy === `in-${p.id}`}
+                      onClick={() =>
+                        run(`in-${p.id}`, () => callAction("player.setWaitlist", { id: p.id, waitlisted: false }), `${p.name} moved to players`)
+                      }
+                    >
+                      Move to players
+                    </Button>
+                  )}
                   <Button size="sm" variant="ghost" onClick={() => setEditing(p)}>
                     Edit
                   </Button>
-                  {p.status !== "sold" && !onBlock(p) && (
+                  {(p.status === "pool" || p.status === "unsold") && !onBlock(p) && (
                     <Button size="sm" variant="ghost" onClick={() => setAssigning(p)} title="Assign to a team without bidding">
                       Assign
+                    </Button>
+                  )}
+                  {p.status === "pool" && !onBlock(p) && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      busy={busy === `out-${p.id}`}
+                      title="Take out of the auction and put on the waitlist"
+                      onClick={() =>
+                        confirm(`Move ${p.name} to the waitlist? They'll be off the wheel and the players list until you move them back.`) &&
+                        run(`out-${p.id}`, () => callAction("player.setWaitlist", { id: p.id, waitlisted: true }), `${p.name} moved to the waitlist`)
+                      }
+                    >
+                      To waitlist
                     </Button>
                   )}
                   {p.status !== "sold" && !onBlock(p) && (
@@ -128,11 +162,16 @@ export function PlayersManager() {
         </ul>
       )}
 
-      <Modal open={editing !== null} onClose={() => setEditing(null)} title={editing === "new" ? "Add player" : "Edit player"}>
+      <Modal
+        open={editing !== null}
+        onClose={() => setEditing(null)}
+        title={editing === "new" ? "Add player" : editing === "new-waitlist" ? "Add to waitlist" : "Edit player"}
+      >
         {editing !== null && (
           <PlayerForm
-            key={editing === "new" ? "new" : editing.id}
-            player={editing === "new" ? null : editing}
+            key={typeof editing === "string" ? editing : editing.id}
+            player={typeof editing === "string" ? null : editing}
+            toWaitlist={editing === "new-waitlist"}
             onCreated={(p) => setEditing(p)}
             onClose={() => setEditing(null)}
           />
@@ -148,9 +187,20 @@ export function PlayersManager() {
   );
 }
 
-function PlayerForm({ player, onCreated, onClose }: { player: Player | null; onCreated: (p: Player) => void; onClose: () => void }) {
-  const { configs, players } = useAuction();
-  const live = player ? (players.find((p) => p.id === player.id) ?? player) : null;
+function PlayerForm({
+  player,
+  toWaitlist = false,
+  onCreated,
+  onClose,
+}: {
+  player: Player | null;
+  toWaitlist?: boolean;
+  onCreated: (p: Player) => void;
+  onClose: () => void;
+}) {
+  const { configs, players, waitlist } = useAuction();
+  const live = player ? ([...players, ...waitlist].find((p) => p.id === player.id) ?? player) : null;
+  const [onWaitlist, setOnWaitlist] = useState(toWaitlist);
   const { busy, run } = useRunner();
   const [f, setF] = useState({
     name: player?.name ?? "",
@@ -191,7 +241,11 @@ function PlayerForm({ player, onCreated, onClose }: { player: Player | null; onC
     if (player) {
       await run("save", () => callAction("player.update", { id: player.id, ...payload }), "Saved").then((r) => r && onClose());
     } else {
-      const created = (await run("save", () => callAction("player.create", payload), "Player added")) as Player | undefined;
+      const created = (await run(
+        "save",
+        () => callAction("player.create", { ...payload, waitlist: onWaitlist }),
+        onWaitlist ? "Added to the waitlist" : "Player added",
+      )) as Player | undefined;
       if (created) onCreated(created);
     }
   }
@@ -238,12 +292,21 @@ function PlayerForm({ player, onCreated, onClose }: { player: Player | null; onC
           <input className={inputClass} type="url" placeholder="https://drive.google.com/…" value={f.photo_link} onChange={(e) => set("photo_link", e.target.value)} />
         </Field>
       </div>
+      {!player && (
+        <label className="flex items-start gap-2 rounded-xl bg-sky-400/10 p-3 text-sm ring-1 ring-sky-400/30">
+          <input type="checkbox" className="mt-0.5 h-4 w-4 accent-sky-400" checked={onWaitlist} onChange={(e) => setOnWaitlist(e.target.checked)} />
+          <span>
+            <b>Add to the waitlist</b>
+            <span className="block text-slate-400">Shown on the public Waitlist, not on the wheel or the players list. Move them in later.</span>
+          </span>
+        </label>
+      )}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" onClick={onClose}>
           {player ? "Cancel" : "Close"}
         </Button>
         <Button type="submit" variant="primary" busy={busy === "save"}>
-          {player ? "Save" : "Add player"}
+          {player ? "Save" : onWaitlist ? "Add to waitlist" : "Add player"}
         </Button>
       </div>
       {!player && <p className="text-xs text-slate-500">You can add a photo after the player is created.</p>}

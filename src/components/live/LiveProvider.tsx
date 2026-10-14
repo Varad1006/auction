@@ -148,7 +148,18 @@ function reducer(s: LiveData, a: Action): LiveData {
   }
 }
 
-const LiveContext = createContext<LiveData & { refresh: () => void }>({ ...initial, refresh: () => {} });
+export type LiveValue = LiveData & {
+  /** Players on the waitlist, next in line first. `players` leaves them out. */
+  waitlist: Player[];
+  refresh: () => void;
+};
+
+const LiveContext = createContext<LiveValue>({ ...initial, waitlist: [], refresh: () => {} });
+
+/** Waitlist order: registration (or added) time, then name. */
+export function byWaitlistOrder(a: Player, b: Player): number {
+  return (a.waitlisted_at ?? a.created_at).localeCompare(b.waitlisted_at ?? b.created_at) || a.name.localeCompare(b.name);
+}
 
 const TABLES: TableName[] = ["pool_config", "teams", "team_pool_limits", "players", "bids", "results"];
 
@@ -268,7 +279,13 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
     };
   }, [loadAll, loadBids]);
 
-  const value = useMemo(() => ({ ...data, refresh: () => void loadAll() }), [data, loadAll]);
+  // Waitlisted players aren't in the auction, so every screen works off
+  // `players` without them; the Waitlist page and admin use `waitlist`.
+  const value = useMemo<LiveValue>(() => {
+    const players = data.players.filter((p) => p.status !== "waitlist");
+    const waitlist = data.players.filter((p) => p.status === "waitlist").sort(byWaitlistOrder);
+    return { ...data, players, waitlist, refresh: () => void loadAll() };
+  }, [data, loadAll]);
   return <LiveContext.Provider value={value}>{children}</LiveContext.Provider>;
 }
 
