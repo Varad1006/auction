@@ -62,6 +62,14 @@ const purseLeft = async () => {
   return (lim?.purse ?? cfg.purse) - sold.reduce((s, p) => s + p.sold_price, 0);
 };
 
+// Clear players left behind by an earlier run that stopped partway.
+for (const p of await read("players?select=id,name&name=like.*%20*")) {
+  if (/^(Owner|Star|Hand|Tenstar) [a-z]+$/.test(p.name)) {
+    await act("player.release", { playerId: p.id });
+    await act("player.delete", { id: p.id });
+  }
+}
+
 const ownerName = unique("Owner");
 const starName = unique("Star");
 const handName = unique("Hand");
@@ -164,6 +172,32 @@ await otherMen.getByText(extraStarName).waitFor({ timeout: 15000 });
 check((await otherMen.getByText(/more from the auction to reach 10\./).count()) === 1, "their team page counts towards 10 from the auction");
 await page.context().close();
 await act("team.limits", { teamId: other.id, pool: "men", purse: null, min_squad: null, max_squad: null });
+
+console.log("Owners who don't play");
+await adm.goto(`${APP}/admin/settings`);
+const teamForm = adm.locator("form", { has: adm.locator(`input[value="${other.name}"]`) });
+await teamForm.getByLabel("Owners who don't play").fill("Nonplay Alpha,  Nonplay Beta (co-owner) ,");
+await teamForm.getByRole("button", { name: "Save" }).click();
+await adm.getByText("Team saved").waitFor({ timeout: 10000 });
+const [saved] = await read(`teams?select=owner_names&id=eq.${other.id}`);
+check(JSON.stringify(saved?.owner_names) === JSON.stringify(["Nonplay Alpha", "Nonplay Beta (co-owner)"]), `Settings saves the names tidied (${JSON.stringify(saved?.owner_names)})`);
+await act("team.update", { id: team.id, owner_names: ["Nonplay Gamma (co-owner)"] });
+const fan = await (await browser.newContext({ ...devices["iPhone 13"] })).newPage();
+await fan.goto(`${APP}/teams/${other.id}`);
+await fan.getByText("Nonplay Alpha · Nonplay Beta (co-owner)").waitFor({ timeout: 15000 });
+check((await fan.getByText("Owners:").count()) === 1, "the team page shows the owners who don't play");
+await fan.goto(`${APP}/teams/${team.id}`);
+const ownersLine = fan.getByText(/^Owners:/);
+await ownersLine.waitFor({ timeout: 15000 });
+const ownersText = (await ownersLine.locator("..").innerText()).replace(/\s+/g, " ");
+check(ownersText.includes(ownerName) && ownersText.includes(handName) && ownersText.endsWith("Nonplay Gamma (co-owner)"), `playing owners come first, then the others ("${ownersText}")`);
+await fan.goto(`${APP}/teams`);
+await fan.getByText("Nonplay Alpha · Nonplay Beta (co-owner)").waitFor({ timeout: 15000 });
+check(true, "…and so does the Teams list");
+await fan.screenshot({ path: `${SHOTS}/s-03-teams.png`, fullPage: false });
+await fan.context().close();
+check((await actAs(owner, "team.update", { id: team.id, owner_names: ["Hacker"] })).status === 403, "owners can't change team owner names");
+for (const t of [team, other]) await act("team.update", { id: t.id, owner_names: [] });
 
 console.log("Removing");
 const rel = await act("player.release", { playerId: starId });

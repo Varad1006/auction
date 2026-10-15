@@ -384,6 +384,8 @@ export const actions = {
       short_name: z.string().trim().min(1).max(5).optional(),
       color: color.optional(),
       sort_order: z.number().int().optional(),
+      /** Owners who don't play (shown on the team pages). */
+      owner_names: z.array(z.string().trim().min(1).max(80)).max(6).optional(),
     }),
     run: async ({ me, db }, { id, ...patch }) => {
       const team = await must(db.from("teams").update(patch).eq("id", id).select().single());

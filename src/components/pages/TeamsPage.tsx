@@ -4,6 +4,7 @@ import Link from "next/link";
 import { cn, initials, money, textOn } from "@/lib/format";
 import { POOL_LABEL, POOLS, type Player } from "@/lib/types";
 import { bySigningThenPrice, extrasText, SigningBadge } from "../live/SigningBadge";
+import { TeamOwners } from "../live/TeamOwners";
 import { useAuction } from "../live/useAuction";
 
 export function TeamsPage() {
@@ -25,8 +26,9 @@ export function TeamsPage() {
                 href={`/teams/${t.id}`}
                 className={cn("block overflow-hidden rounded-2xl bg-slate-900 ring-1 transition hover:ring-amber-400/50", leading ? "leading-glow ring-emerald-400" : "ring-white/10")}
               >
-                <div className="flex items-center justify-between px-4 py-3" style={{ background: t.color, color: textOn(t.color) }}>
-                  <span className="text-lg font-black">{t.name}</span>
+                <div className="px-4 py-3" style={{ background: t.color, color: textOn(t.color) }}>
+                  <span className="block text-lg font-black">{t.name}</span>
+                  <TeamOwners team={t} players={players} className="text-xs" />
                 </div>
                 <div className="grid grid-cols-2 gap-px bg-white/5">
                   {POOLS.map((p) => {
@@ -79,6 +81,7 @@ export function TeamDetailPage({ teamId }: { teamId: string }) {
       <Link href="/teams" className="text-sm text-slate-400 hover:text-slate-200">← All teams</Link>
       <div className="rounded-2xl px-5 py-5" style={{ background: team.color, color: textOn(team.color) }}>
         <h1 className="text-3xl font-black">{team.name}</h1>
+        <TeamOwners team={team} players={players} className="mt-1" />
       </div>
       <div className="grid gap-5 lg:grid-cols-2">
         {POOLS.map((pool) => {

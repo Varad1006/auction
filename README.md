@@ -108,6 +108,9 @@ team's "Buys" number),
 aren't in Top buys or the results, can't be undone with **Undo last result**,
 and **Reset auction** leaves them on their teams. Team pages tag them and show
 the full team size, e.g. "Team of 12: 9 from the auction + 1 star · 2 owners".
+Owners who don't play are only names: add them under **Settings → Teams**
+(*Owners who don't play*, comma-separated). Team pages list every owner,
+playing owners first.
 
 ## Setup (one time)
 

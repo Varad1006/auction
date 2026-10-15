@@ -114,7 +114,11 @@ function TeamsEditor({ teams, limits }: { teams: Team[]; limits: TeamPoolLimit[]
     <Card title={`Teams (${teams.length})`}>
       <div className="space-y-4">
         {teams.map((t) => (
-          <TeamRow key={`${t.id}-${t.name}-${t.color}-${t.sort_order}`} team={t} limits={limits.filter((l) => l.team_id === t.id)} />
+          <TeamRow
+            key={`${t.id}-${t.name}-${t.color}-${t.sort_order}-${(t.owner_names ?? []).join("|")}`}
+            team={t}
+            limits={limits.filter((l) => l.team_id === t.id)}
+          />
         ))}
         <form
           className="flex flex-wrap items-end gap-2 border-t border-white/10 pt-4"
@@ -144,9 +148,14 @@ function TeamsEditor({ teams, limits }: { teams: Team[]; limits: TeamPoolLimit[]
 
 function TeamRow({ team, limits }: { team: Team; limits: TeamPoolLimit[] }) {
   const { busy, run } = useRunner();
-  const [f, setF] = useState({ name: team.name, color: team.color, sort_order: String(team.sort_order) });
+  const savedOwners = (team.owner_names ?? []).join(", ");
+  const [f, setF] = useState({ name: team.name, color: team.color, sort_order: String(team.sort_order), owners: savedOwners });
   const [showLimits, setShowLimits] = useState(false);
-  const dirty = f.name !== team.name || f.color !== team.color || f.sort_order !== String(team.sort_order);
+  const dirty = f.name !== team.name || f.color !== team.color || f.sort_order !== String(team.sort_order) || f.owners !== savedOwners;
+  const ownerList = f.owners
+    .split(",")
+    .map((n) => n.trim().replace(/\s+/g, " "))
+    .filter(Boolean);
 
   return (
     <div className="rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/10">
@@ -156,7 +165,14 @@ function TeamRow({ team, limits }: { team: Team; limits: TeamPoolLimit[] }) {
           e.preventDefault();
           void run(
             "save",
-            () => callAction("team.update", { id: team.id, name: f.name, color: f.color, sort_order: Number(f.sort_order) || 0 }),
+            () =>
+              callAction("team.update", {
+                id: team.id,
+                name: f.name,
+                color: f.color,
+                sort_order: Number(f.sort_order) || 0,
+                ...(f.owners !== savedOwners ? { owner_names: ownerList } : {}),
+              }),
             "Team saved",
           );
         }}
@@ -169,6 +185,19 @@ function TeamRow({ team, limits }: { team: Team; limits: TeamPoolLimit[] }) {
         </Field>
         <Field label="Order" className="w-16">
           <input className={inputClass} inputMode="numeric" value={f.sort_order} onChange={(e) => setF((s) => ({ ...s, sort_order: num(e.target.value) }))} />
+        </Field>
+        <Field
+          label="Owners who don't play"
+          className="w-full"
+          hint="Shown on the team pages, separated by commas. Playing owners are added from Admin → Players (Assign → Team owner)."
+        >
+          <input
+            className={inputClass}
+            maxLength={500}
+            placeholder="e.g. Yogendra Deoskar, Praveen Ganegaonkar (co-owner)"
+            value={f.owners}
+            onChange={(e) => setF((s) => ({ ...s, owners: e.target.value }))}
+          />
         </Field>
         <Button type="submit" variant={dirty ? "primary" : "secondary"} disabled={!dirty} busy={busy === "save"}>
           Save

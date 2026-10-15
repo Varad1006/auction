@@ -542,7 +542,14 @@ function SigningsSummary({ onEdit }: { onEdit: (p: Player) => void }) {
                   <span className="tabular-nums text-slate-300">{money(p.sold_price)}</span>
                 </button>
               ))}
-              {!mine.some((p) => p.signing === "owner") && <span className="text-xs text-slate-500">No playing owner</span>}
+              {(t.owner_names ?? []).length > 0 && (
+                <span className="text-xs text-slate-400">
+                  Owner{(t.owner_names ?? []).length > 1 ? "s" : ""} (not playing): {(t.owner_names ?? []).join(" · ")}
+                </span>
+              )}
+              {!mine.some((p) => p.signing === "owner") && !(t.owner_names ?? []).length && (
+                <span className="text-xs text-slate-500">No playing owner</span>
+              )}
               {!mine.some((p) => p.signing === "star") && <span className="text-xs text-amber-300">No star yet</span>}
               <span className="ml-auto flex gap-3 text-xs text-slate-400">
                 {s && (

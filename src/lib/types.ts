@@ -41,6 +41,8 @@ export interface Team {
   short_name: string;
   color: string;
   sort_order: number;
+  /** Owners who don't play, shown on the team pages (missing before migration 0015). */
+  owner_names?: string[];
   created_at: string;
 }
 
