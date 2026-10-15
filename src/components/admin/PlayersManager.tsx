@@ -6,6 +6,7 @@ import { cn, money } from "@/lib/format";
 import type { ImportedPlayer } from "@/lib/import";
 import { resizeImage } from "@/lib/image";
 import { basePriceFor } from "@/lib/rules";
+import { nonPlayingOwnerNames } from "@/lib/teams";
 import { PLAYER_ROLES, POOL_LABEL, POOLS, type Player, type PlayerRole, type Pool, type Signing } from "@/lib/types";
 import { PlayerAvatar } from "../live/PlayerCard";
 import { SigningBadge } from "../live/SigningBadge";
@@ -526,6 +527,7 @@ function SigningsSummary({ onEdit }: { onEdit: (p: Player) => void }) {
           const mine = signed.filter((p) => p.sold_team_id === t.id).sort((a, b) => (a.signing === b.signing ? 0 : a.signing === "owner" ? -1 : 1));
           const total = mine.reduce((sum, p) => sum + (p.sold_price ?? 0), 0);
           const s = men.get(t.id);
+          const notPlaying = nonPlayingOwnerNames(t, players);
           return (
             <li key={t.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2">
               <TeamBadge team={t} className="w-32 shrink-0" />
@@ -542,12 +544,12 @@ function SigningsSummary({ onEdit }: { onEdit: (p: Player) => void }) {
                   <span className="tabular-nums text-slate-300">{money(p.sold_price)}</span>
                 </button>
               ))}
-              {(t.owner_names ?? []).length > 0 && (
+              {notPlaying.length > 0 && (
                 <span className="text-xs text-slate-400">
-                  Owner{(t.owner_names ?? []).length > 1 ? "s" : ""} (not playing): {(t.owner_names ?? []).join(" · ")}
+                  Owner{notPlaying.length > 1 ? "s" : ""} (not playing): {notPlaying.join(" · ")}
                 </span>
               )}
-              {!mine.some((p) => p.signing === "owner") && !(t.owner_names ?? []).length && (
+              {!mine.some((p) => p.signing === "owner") && notPlaying.length === 0 && (
                 <span className="text-xs text-slate-500">No playing owner</span>
               )}
               {!mine.some((p) => p.signing === "star") && <span className="text-xs text-amber-300">No star yet</span>}

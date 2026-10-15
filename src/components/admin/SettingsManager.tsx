@@ -4,6 +4,7 @@ import { useState } from "react";
 import { callAction } from "@/lib/api";
 import { cn, money } from "@/lib/format";
 import { formatIncrementTiers, parseIncrementTiers } from "@/lib/rules";
+import { ownersOfOtherTeams } from "@/lib/teams";
 import { POOL_LABEL, POOLS, type Pool, type PoolConfig, type Team, type TeamPoolLimit } from "@/lib/types";
 import { useAuction } from "../live/useAuction";
 import { Button, Card, Field, inputClass, useRunner } from "../ui";
@@ -148,6 +149,7 @@ function TeamsEditor({ teams, limits }: { teams: Team[]; limits: TeamPoolLimit[]
 
 function TeamRow({ team, limits }: { team: Team; limits: TeamPoolLimit[] }) {
   const { busy, run } = useRunner();
+  const { players, teams } = useAuction();
   const savedOwners = (team.owner_names ?? []).join(", ");
   const [f, setF] = useState({ name: team.name, color: team.color, sort_order: String(team.sort_order), owners: savedOwners });
   const [showLimits, setShowLimits] = useState(false);
@@ -156,6 +158,7 @@ function TeamRow({ team, limits }: { team: Team; limits: TeamPoolLimit[] }) {
     .split(",")
     .map((n) => n.trim().replace(/\s+/g, " "))
     .filter(Boolean);
+  const mixedUp = ownersOfOtherTeams(team.id, ownerList, players, teams);
 
   return (
     <div className="rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/10">
@@ -189,7 +192,7 @@ function TeamRow({ team, limits }: { team: Team; limits: TeamPoolLimit[] }) {
         <Field
           label="Owners who don't play"
           className="w-full"
-          hint="Shown on the team pages, separated by commas. Playing owners are added from Admin → Players (Assign → Team owner)."
+          hint="Separated by commas. Playing owners (Admin → Players → Assign → Team owner) are listed on the team pages automatically; write one here only to change how it shows, e.g. “Nikhil Dhane (co-owner)”."
         >
           <input
             className={inputClass}
@@ -198,6 +201,11 @@ function TeamRow({ team, limits }: { team: Team; limits: TeamPoolLimit[] }) {
             value={f.owners}
             onChange={(e) => setF((s) => ({ ...s, owners: e.target.value }))}
           />
+          {mixedUp.map((m) => (
+            <span key={m.name} role="alert" className="mt-1 block text-xs font-semibold text-amber-300">
+              {m.name} is a playing owner of {m.team}, not {team.name}. Remove them here?
+            </span>
+          ))}
         </Field>
         <Button type="submit" variant={dirty ? "primary" : "secondary"} disabled={!dirty} busy={busy === "save"}>
           Save

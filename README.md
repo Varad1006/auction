@@ -110,7 +110,9 @@ and **Reset auction** leaves them on their teams. Team pages tag them and show
 the full team size, e.g. "Team of 12: 9 from the auction + 1 star · 2 owners".
 Owners who don't play are only names: add them under **Settings → Teams**
 (*Owners who don't play*, comma-separated). Team pages list every owner,
-playing owners first.
+playing owners first. Writing a playing owner's name there too (e.g.
+"Nikhil Dhane (co-owner)") changes how it shows instead of listing it twice,
+and Settings warns when a name is another team's playing owner.
 
 ## Setup (one time)
 

@@ -70,6 +70,11 @@ for (const p of await read("players?select=id,name&name=like.*%20*")) {
   }
 }
 
+for (const t of teams.slice(0, 2)) {
+  await act("team.update", { id: t.id, owner_names: [] });
+  await act("team.limits", { teamId: t.id, pool: "men", purse: null, min_squad: null, max_squad: null });
+}
+
 const ownerName = unique("Owner");
 const starName = unique("Star");
 const handName = unique("Hand");
@@ -191,12 +196,24 @@ const ownersLine = fan.getByText(/^Owners:/);
 await ownersLine.waitFor({ timeout: 15000 });
 const ownersText = (await ownersLine.locator("..").innerText()).replace(/\s+/g, " ");
 check(ownersText.includes(ownerName) && ownersText.includes(handName) && ownersText.endsWith("Nonplay Gamma (co-owner)"), `playing owners come first, then the others ("${ownersText}")`);
+// A playing owner written in Settings (to add "(co-owner)") shows once, that way.
+await act("team.update", { id: team.id, owner_names: [`${handName.toUpperCase()} (co-owner)`, "Nonplay Gamma"] });
+await fan.waitForFunction((t) => document.body.innerText.includes(t), `${handName.toUpperCase()} (co-owner) · Nonplay Gamma`, { timeout: 15000 });
+const merged = (await fan.getByText(/^Owners:/).locator("..").innerText()).replace(/\s+/g, " ");
+check(merged === `Owners: ${ownerName} · ${handName.toUpperCase()} (co-owner) · Nonplay Gamma`, `a playing owner typed in Settings isn't listed twice ("${merged}")`);
 await fan.goto(`${APP}/teams`);
 await fan.getByText("Nonplay Alpha · Nonplay Beta (co-owner)").waitFor({ timeout: 15000 });
 check(true, "…and so does the Teams list");
 await fan.screenshot({ path: `${SHOTS}/s-03-teams.png`, fullPage: false });
 await fan.context().close();
 check((await actAs(owner, "team.update", { id: team.id, owner_names: ["Hacker"] })).status === 403, "owners can't change team owner names");
+// Typing another team's playing owner in Settings gets a warning.
+await adm.goto(`${APP}/admin/settings`);
+const otherForm = adm.locator("form", { has: adm.locator(`input[value="${other.name}"]`) });
+await otherForm.getByLabel("Owners who don't play").fill(`Nonplay Alpha, ${ownerName}`);
+const warning = otherForm.getByRole("alert");
+await warning.waitFor({ timeout: 5000 });
+check((await warning.innerText()).includes(`${ownerName} is a playing owner of ${team.name}, not ${other.name}`), `Settings warns about another team's owner ("${await warning.innerText()}")`);
 for (const t of [team, other]) await act("team.update", { id: t.id, owner_names: [] });
 
 console.log("Removing");
