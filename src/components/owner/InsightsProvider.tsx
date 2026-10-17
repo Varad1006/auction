@@ -4,10 +4,21 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { PlayerInsight } from "@/lib/insights";
 import { useMe } from "../MeProvider";
 
-interface AdminInfo {
+export interface SeasonPrices {
+  season: number;
+  pool: "men" | "women";
+  players: number;
+  sold: number;
+  average: number | null;
+}
+
+export interface AdminInfo {
   configured: boolean;
-  model: string;
+  provider: "groq" | "anthropic" | null;
+  model: string | null;
   batchSize: number;
+  /** Previous auctions' price lists uploaded so far. */
+  seasons: SeasonPrices[];
 }
 
 interface InsightsValue {
@@ -32,7 +43,7 @@ async function fetchInsights(): Promise<{ insights: PlayerInsight[]; admin: Admi
   return res?.ok ? res.json() : null;
 }
 
-/** AI scouting notes, loaded once for owners and admins (they rarely change). */
+/** Price guide and AI notes, loaded once for owners and admins (they rarely change). */
 export function InsightsProvider({ children }: { children: React.ReactNode }) {
   const { me } = useMe();
   const enabled = me?.role === "admin" || (me?.role === "owner" && !!me.teamId);
@@ -74,7 +85,7 @@ export function useInsights() {
   return useContext(InsightsContext);
 }
 
-/** The notes for one player, if the AI has written them. */
+/** The price guide (and AI note, if written) for one player. */
 export function useInsight(playerId: string | null | undefined): PlayerInsight | null {
   const { byPlayer } = useInsights();
   const i = playerId ? byPlayer.get(playerId) : undefined;

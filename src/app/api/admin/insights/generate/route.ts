@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { POOLS } from "@/lib/types";
+import { aiProvider, batchSizeFor } from "@/server/ai";
 import { isSameOrigin, jsonError, requireRole } from "@/server/http";
-import { BATCH_SIZE, clearInsights, generateBatch, InsightError } from "@/server/insights";
+import { clearInsights, generateBatch, InsightError } from "@/server/insights";
 import { adminSupabase } from "@/server/supabase";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,7 @@ const input = z.object({
   pool: z.enum(POOLS),
   restart: z.boolean().default(false),
   /** Fewer players per request after one ran out of time. */
-  size: z.number().int().min(1).max(BATCH_SIZE).optional(),
+  size: z.number().int().min(1).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -29,13 +30,23 @@ export async function POST(req: NextRequest) {
       const cleared = await clearInsights(db, body.data.pool);
       await db.from("audit_log").insert({ actor: guard.me.email, action: "clear_insights", details: { pool: body.data.pool, cleared } });
     }
-    const result = await generateBatch(db, body.data.pool, body.data.size);
+    const size = Math.min(body.data.size ?? Infinity, batchSizeFor(aiProvider()));
+    const result = await generateBatch(db, body.data.pool, size);
     if (result.generated) {
       await db.from("audit_log").insert({ actor: guard.me.email, action: "generate_insights", details: { pool: body.data.pool, ...result } });
     }
     return NextResponse.json({ ok: true, data: result });
   } catch (e) {
-    if (e instanceof InsightError) return jsonError(e.status, e.code, e.message);
+    if (e instanceof InsightError) {
+      // The page waits this long and carries on by itself.
+      if (e.retryAfter !== null) {
+        return NextResponse.json(
+          { ok: false, code: e.code, message: e.message, retryAfter: e.retryAfter },
+          { status: e.status, headers: { "Cache-Control": "no-store", "Retry-After": String(e.retryAfter) } },
+        );
+      }
+      return jsonError(e.status, e.code, e.message);
+    }
     console.error("Generating insights failed", e);
     return jsonError(500, "internal", "Generating notes failed");
   }

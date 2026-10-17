@@ -121,6 +121,8 @@ describe.skipIf(!ADMIN_URL)("auction database", () => {
         "select admin_delete_team('x', gen_random_uuid())",
         "select * from player_insights",
         `insert into player_insights (player_id, summary) values ('${playerId}', 'x')`,
+        "select * from past_prices",
+        "insert into past_prices (season, pool, name, price) values (1, 'men', 'x', 1)",
         "select admin_sign_player('x', gen_random_uuid(), gen_random_uuid(), 'star', 0)",
         "select admin_set_waitlist('x', gen_random_uuid(), true)",
       ];
@@ -563,8 +565,17 @@ describe.skipIf(!ADMIN_URL)("auction database", () => {
       await q("insert into player_insights (player_id, stats, price_fair, tier) values ($1, '{\"seasons\": []}', 12000, 'solid')", [p]);
       expect((await errorOf(q("update player_insights set price_fair = -1 where player_id = $1", [p]))).message).toMatch(/check constraint/);
       expect((await errorOf(q("update player_insights set tier = 'legend' where player_id = $1", [p]))).message).toMatch(/check constraint/);
+      await q("update player_insights set valuation = $2 where player_id = $1", [p, JSON.stringify({ fair: 12000, history: [] })]);
       await q("select admin_delete_player('a', $1)", [p]);
       expect(await q("select 1 from player_insights where player_id = $1", [p])).toHaveLength(0);
+    });
+
+    it("keep previous prices sane", async () => {
+      await q("insert into past_prices (season, pool, name, team, price) values (2, 'women', 'Old Player', null, 0)");
+      expect((await errorOf(q("insert into past_prices (season, pool, name, price) values (2, 'men', 'x', -5)"))).message).toMatch(/check constraint/);
+      expect((await errorOf(q("insert into past_prices (season, pool, name, price) values (0, 'men', 'x', 5)"))).message).toMatch(/check constraint/);
+      expect((await errorOf(q("insert into past_prices (season, pool, name, price) values (2, 'men', '', 5)"))).message).toMatch(/check constraint/);
+      await q("delete from past_prices where true");
     });
   });
 

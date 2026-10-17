@@ -14,21 +14,21 @@ const TIER_STYLE: Record<Tier, string> = {
 
 const short = (n: number) => (n >= 1000 ? `${Number.isInteger(n / 1000) ? n / 1000 : (n / 1000).toFixed(1)}k` : String(n));
 
-/** "AI 12k" next to a player's price, for owners and admins. */
+/** "✨ 12k" (AI note) or "📊 12k" (price guide only) next to a player's price, for owners and admins. */
 export function AiPriceChip({ playerId, className }: { playerId: string; className?: string }) {
   const insight = useInsight(playerId);
   if (!insight?.priceFair) return null;
   return (
     <span
       className={cn("inline-flex items-center gap-0.5 rounded-md bg-fuchsia-500/20 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-fuchsia-100", className)}
-      title={`AI suggests about ${money(insight.priceFair)} (range ${money(insight.priceFloor)}–${money(insight.priceStretch)})`}
+      title={`Suggested price about ${money(insight.priceFair)} (range ${money(insight.priceFloor)}–${money(insight.priceStretch)})`}
     >
-      ✨ {short(insight.priceFair)}
+      {insight.hasNote ? "✨" : "📊"} {short(insight.priceFair)}
     </span>
   );
 }
 
-/** The AI's scouting note and suggested price range for one player. */
+/** The suggested price range for one player, with the AI's scouting note if written. */
 export function AiScoutCard({ playerId, compact = false, className }: { playerId: string; compact?: boolean; className?: string }) {
   const insight = useInsight(playerId);
   if (!insight) return null;
@@ -37,10 +37,10 @@ export function AiScoutCard({ playerId, compact = false, className }: { playerId
 
 export function ScoutCard({ insight, compact, className }: { insight: PlayerInsight; compact?: boolean; className?: string }) {
   return (
-    <section className={cn("rounded-xl bg-fuchsia-950/30 p-3 text-sm ring-1 ring-fuchsia-400/25", className)} aria-label="AI scout">
+    <section className={cn("rounded-xl bg-fuchsia-950/30 p-3 text-sm ring-1 ring-fuchsia-400/25", className)} aria-label={insight.hasNote ? "AI scout" : "Price guide"}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-fuchsia-200">
-          ✨ AI scout
+          {insight.hasNote ? "✨ AI scout" : "📊 Price guide"}
           {insight.tier && <span className={cn("rounded px-1.5 py-0.5 text-[10px] tracking-normal", TIER_STYLE[insight.tier])}>{TIER_LABEL[insight.tier]}</span>}
         </p>
         {insight.confidence && <span className="text-[11px] text-slate-400">{insight.confidence} confidence</span>}
@@ -59,6 +59,9 @@ export function ScoutCard({ insight, compact, className }: { insight: PlayerInsi
       )}
 
       {insight.summary && <p className="mt-2 text-slate-200">{insight.summary}</p>}
+      {!insight.hasNote && !insight.history.length && !insight.statLines.length && (
+        <p className="mt-2 text-xs text-slate-400">No previous auction price or stats on record.</p>
+      )}
       {insight.roleFit && <p className="mt-1 text-xs text-slate-400">Role: {insight.roleFit}</p>}
 
       {!compact && (insight.strengths.length > 0 || insight.concerns.length > 0) && (
@@ -76,6 +79,14 @@ export function ScoutCard({ insight, compact, className }: { insight: PlayerInsi
         </ul>
       )}
 
+      {insight.history.length > 0 && (
+        <ul className="mt-2 space-y-0.5 text-xs text-slate-300" aria-label="Previous auctions">
+          {insight.history.map((l) => (
+            <li key={l}>🔨 {l}</li>
+          ))}
+        </ul>
+      )}
+
       {!compact && insight.statLines.length > 0 && (
         <ul className="mt-2 space-y-0.5 border-t border-white/10 pt-2 text-[11px] text-slate-400">
           {insight.statLines.map((l) => (
@@ -85,7 +96,7 @@ export function ScoutCard({ insight, compact, className }: { insight: PlayerInsi
       )}
 
       <p className="mt-2 text-[10px] text-slate-500">
-        AI suggestion from past stats: use your own judgement.
+        {insight.hasNote ? "AI suggestion from previous prices and stats" : "Worked out from previous auction prices and stats"}: use your own judgement.
         {!compact && insight.cricheroesUrl && (
           <>
             {" "}

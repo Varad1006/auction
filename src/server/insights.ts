@@ -1,12 +1,12 @@
 import "server-only";
 
-import Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { strFromU8, unzipSync } from "fflate";
 import {
-  batchRequest,
-  marketBrief,
+  batchBrief,
+  marketNumbers,
   OUTPUT_SCHEMA,
+  priceStep,
   readAnswer,
   statLines,
   SYSTEM_PROMPT,
@@ -14,32 +14,34 @@ import {
   type Market,
   type PlayerInsight,
 } from "@/lib/insights";
+import { parsePriceCsv, parsePriceWorkbook, type PastPriceRow } from "@/lib/price-lists";
+import { teamPoolSummary } from "@/lib/rules";
 import { matchPlayers, parseStatsFiles, type PlayerStats } from "@/lib/stats-import";
 import { POOL_LABEL, type Player, type Pool, type PoolConfig, type Team, type TeamPoolLimit } from "@/lib/types";
+import { historyLine, priceHistory, seasonAverages, valuePool, type PastPrice, type Valuation } from "@/lib/valuation";
+import { readXlsx } from "@/lib/xlsx";
+import { AiError, aiProvider, batchSizeFor, completeJson, modelName, type Provider } from "./ai";
 import { registrationSettings } from "./registration";
 
-export const AI_MODEL = "claude-opus-5-5";
-/**
- * Players per request: small enough to finish inside a 60 s function. The
- * admin page asks for fewer if a request still runs out of time.
- */
-export const BATCH_SIZE = 4;
-/** Give up on the AI before the platform stops the function. */
-const AI_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS) || 50_000;
+/** Saved as the model of prices worked out without the AI. */
+export const GUIDE_MODEL = "price-guide";
 
 export class InsightError extends Error {
   constructor(
     public status: number,
     public code: string,
     message: string,
+    /** Seconds to wait before trying again (AI rate limits). */
+    public retryAfter: number | null = null,
   ) {
     super(message);
   }
 }
 
-export function aiConfigured(): boolean {
-  return !!process.env.ANTHROPIC_API_KEY;
-}
+// Tables and columns from a migration that hasn't been run yet.
+const missingTable = (code?: string) => code === "42P01" || code === "PGRST205";
+const missingColumn = (code?: string) => code === "42703" || code === "PGRST204";
+const needsMigration = () => new InsightError(503, "migration_needed", "Run the latest SQL update in Supabase first.");
 
 // ---------------------------------------------------------------------------
 // Importing stats
@@ -111,7 +113,88 @@ export async function importStats(db: SupabaseClient, files: Record<string, stri
 }
 
 // ---------------------------------------------------------------------------
-// Generating notes
+// Importing previous auctions' prices
+// ---------------------------------------------------------------------------
+
+const MAX_PRICE_FILE = 10 * 1024 * 1024;
+
+/** Reads an uploaded tracker sheet (.xlsx or .csv): names, pools, teams and prices only. */
+export function parsePriceUpload(upload: { name: string; data: Uint8Array }): { rows: PastPriceRow[]; sheet: string | null } {
+  if (upload.data.length > MAX_PRICE_FILE) throw new InsightError(413, "too_large", "The file is too large (10 MB at most)");
+  let parsed: { rows: PastPriceRow[]; sheet: string | null; error: string | null };
+  if (/\.xlsx$/i.test(upload.name)) {
+    let sheets;
+    try {
+      sheets = readXlsx(upload.data);
+    } catch {
+      throw new InsightError(400, "bad_file", `${upload.name} couldn't be opened as an Excel file`);
+    }
+    parsed = parsePriceWorkbook(sheets);
+  } else if (/\.csv$/i.test(upload.name)) {
+    parsed = { ...parsePriceCsv(strFromU8(upload.data)), sheet: null };
+  } else {
+    throw new InsightError(400, "bad_file", "Upload the sheet as an Excel (.xlsx) or .csv file");
+  }
+  if (!parsed.rows.length) throw new InsightError(400, "no_prices", parsed.error ?? "No players found in the file");
+  return { rows: parsed.rows.slice(0, 2000), sheet: parsed.sheet };
+}
+
+export interface PriceReport {
+  season: number;
+  sheet: string | null;
+  /** Players read from the file. */
+  players: number;
+  /** Of those, sold in that auction (a price above 0). */
+  sold: number;
+  averages: Partial<Record<Pool, number>>;
+  /** This year's auction players found in the list with a price. */
+  matched: number;
+  /** This year's auction players (in the pool or unsold). */
+  available: number;
+}
+
+/** Replaces one season's prices with those in the uploaded sheet. */
+export async function importPrices(db: SupabaseClient, season: number, upload: { name: string; data: Uint8Array }): Promise<PriceReport> {
+  const { rows, sheet } = parsePriceUpload(upload);
+  const removed = await db.from("past_prices").delete().eq("season", season);
+  if (removed.error) {
+    if (missingTable(removed.error.code)) throw needsMigration();
+    console.error("Clearing prices failed", removed.error);
+    throw new InsightError(500, "db_error", "Could not save the prices");
+  }
+  const { error } = await db.from("past_prices").insert(rows.map((r) => ({ season, pool: r.pool, name: r.name, team: r.team, price: r.price })));
+  if (error) {
+    console.error("Saving prices failed", error);
+    throw new InsightError(500, "db_error", "Could not save the prices");
+  }
+
+  const past: PastPrice[] = rows.map((r) => ({ season, ...r }));
+  const averages = seasonAverages(past);
+  const { data: players } = await db.from("players").select("name, pool, status");
+  const available = ((players ?? []) as Pick<Player, "name" | "pool" | "status">[]).filter((p) => p.status === "pool" || p.status === "unsold");
+  const average = (pool: Pool) => averages.get(`${season}|${pool}`);
+  return {
+    season,
+    sheet,
+    players: rows.length,
+    sold: rows.filter((r) => r.price > 0).length,
+    averages: Object.fromEntries((["men", "women"] as Pool[]).flatMap((p) => (average(p) ? [[p, Math.round(average(p)!)]] : []))),
+    matched: available.filter((p) => priceHistory(p, past, averages).length > 0).length,
+    available: available.length,
+  };
+}
+
+async function loadPastPrices(db: SupabaseClient): Promise<PastPrice[]> {
+  const { data, error } = await db.from("past_prices").select("season, pool, name, team, price").order("id").limit(5000);
+  if (error) {
+    if (missingTable(error.code)) return [];
+    throw new InsightError(500, "db_error", "Could not load the previous prices");
+  }
+  return data as PastPrice[];
+}
+
+// ---------------------------------------------------------------------------
+// The price guide and the AI's notes
 // ---------------------------------------------------------------------------
 
 interface InsightRow {
@@ -128,42 +211,56 @@ interface InsightRow {
   price_stretch: number | null;
   confidence: PlayerInsight["confidence"];
   generated_at: string | null;
+  /** Missing before migration 0017. */
+  valuation?: Valuation | null;
 }
 
 const hasStats = (s: InsightRow["stats"] | undefined): s is PlayerStats => !!s && "seasons" in s;
 
+/** Match days a player picked in "Availability" when registering. */
+function availableDays(p: Player): number | null {
+  const value = (p.details ?? []).find((d) => d.label.toLowerCase() === "availability")?.value;
+  return value ? value.split(",").map((d) => d.trim()).filter(Boolean).length : null;
+}
+
 async function poolContext(db: SupabaseClient, pool: Pool) {
-  const [players, teams, cfg, limits, insights, settings] = await Promise.all([
+  const [players, teams, cfg, limits, insights, settings, past] = await Promise.all([
     db.from("players").select("*").eq("pool", pool).order("name"),
     db.from("teams").select("*").order("sort_order").order("name"),
     db.from("pool_config").select("*").eq("pool", pool).single(),
     db.from("team_pool_limits").select("*").eq("pool", pool),
     db.from("player_insights").select("*"),
     registrationSettings(db),
+    loadPastPrices(db),
   ]);
   const failed = [players, teams, cfg, limits, insights].find((r) => r.error);
   if (failed?.error) throw new InsightError(500, "db_error", "Could not load the auction data");
   const all = players.data as Player[];
   const config = cfg.data as PoolConfig;
+  const summaries = (teams.data as Team[]).map((t) => ({ team: t, s: teamPoolSummary(t.id, pool, config, limits.data as TeamPoolLimit[], all) }));
   const market: Market = {
     pool,
     poolLabel: POOL_LABEL[pool],
-    teams: (teams.data as Team[]).map((t) => {
-      const lim = (limits.data as TeamPoolLimit[]).find((l) => l.team_id === t.id);
-      const mine = all.filter((p) => p.status === "sold" && p.sold_team_id === t.id);
-      return {
-        name: t.name,
-        purseLeft: (lim?.purse ?? config.purse) - mine.reduce((s, p) => s + (p.sold_price ?? 0), 0),
-        bought: mine.filter((p) => !p.signing).length,
-        minSquad: lim?.min_squad ?? config.min_squad,
-        maxSquad: lim?.max_squad ?? config.max_squad,
-      };
-    }),
+    teams: summaries.map(({ team, s }) => ({ name: team.name, purseLeft: s.remaining, bought: s.squadCount, minSquad: s.minSquad, maxSquad: s.maxSquad })),
     basePrices: { A: config.base_price_a, B: config.base_price_b, C: config.base_price_c },
     sold: all.filter((p) => p.status === "sold" && !p.signing).map((p) => ({ name: p.name, price: p.sold_price ?? 0 })),
   };
   const rows = new Map((insights.data as InsightRow[]).map((r) => [r.player_id, r]));
+  const statsOf = (id: string) => {
+    const s = rows.get(id)?.stats;
+    return hasStats(s) ? s : null;
+  };
+  const matchDays = settings.availability_options.length;
+  const numbers = marketNumbers(market);
+  const maxBid = Math.max(0, ...summaries.map(({ s }) => s.maxBid));
+  const step = priceStep(Math.max(0, ...market.teams.map((t) => t.purseLeft)));
+
   const available = all.filter((p) => p.status === "pool" || p.status === "unsold");
+  const valuations = valuePool(
+    available.map((p) => ({ id: p.id, name: p.name, pool, basePrice: p.base_price, stats: statsOf(p.id), availableDays: availableDays(p) })),
+    past,
+    { purse: numbers.purse, slots: numbers.slotsMin, maxBid, step, matchDays },
+  );
   const brief: BriefPlayer[] = available.map((p, i) => ({
     ref: `P${String(i + 1).padStart(2, "0")}`,
     id: p.id,
@@ -171,99 +268,94 @@ async function poolContext(db: SupabaseClient, pool: Pool) {
     role: p.role,
     battingStyle: p.batting_style,
     bowlingStyle: p.bowling_style,
-    grade: p.grade,
     basePrice: p.base_price,
     details: p.details ?? [],
     notes: p.notes,
-    stats: (() => {
-      const s = rows.get(p.id)?.stats;
-      return hasStats(s) ? s : null;
-    })(),
+    stats: statsOf(p.id),
+    valuation: valuations.get(p.id)!,
   }));
-  return { market, brief, rows, matchDays: settings.availability_options.length };
+  return { market, brief, rows, matchDays, maxBid, step };
 }
 
-function client(): Anthropic {
-  // One attempt per request: the admin page retries, and a function has 60 s.
-  return new Anthropic({ timeout: AI_TIMEOUT_MS, maxRetries: 0 });
-}
+const guideRow = (playerId: string, v: Valuation, now: string) => ({
+  player_id: playerId,
+  tier: v.tier,
+  price_floor: v.floor,
+  price_fair: v.fair,
+  price_stretch: v.stretch,
+  confidence: v.confidence,
+  valuation: v,
+  generated_at: now,
+  model: GUIDE_MODEL,
+});
 
 function friendly(e: unknown): InsightError {
   if (e instanceof InsightError) return e;
-  if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) {
-    return new InsightError(502, "ai_key_rejected", "The Anthropic API key was rejected. Check ANTHROPIC_API_KEY in Vercel.");
-  }
-  if (e instanceof Anthropic.RateLimitError) return new InsightError(429, "ai_busy", "The AI is rate-limited right now. Try again in a minute.");
-  if (e instanceof Anthropic.APIConnectionTimeoutError) return new InsightError(504, "ai_timeout", "The AI took too long. Try again.");
-  if (e instanceof Anthropic.APIConnectionError) return new InsightError(502, "ai_unreachable", "Couldn't reach the AI service. Try again.");
-  if (e instanceof Anthropic.InternalServerError) return new InsightError(503, "ai_busy", "The AI service is busy. Try again shortly.");
-  if (e instanceof Anthropic.BadRequestError) {
-    console.error("AI request rejected", e.message);
-    return new InsightError(502, "ai_rejected", "The AI service rejected the request.");
-  }
-  if (e instanceof Anthropic.APIError) {
-    console.error("AI error", e.status, e.message);
-    return new InsightError(502, "ai_error", `The AI service returned an error (${e.status ?? "unknown"}).`);
-  }
+  if (e instanceof AiError) return new InsightError(e.status, e.code, e.message, e.retryAfter);
   console.error("Generating insights failed", e);
   return new InsightError(500, "internal", "Generating notes failed.");
 }
 
 export interface BatchResult {
+  /** AI notes written by this call. */
   generated: number;
+  /** Players still without an AI note. */
   remaining: number;
+  /** Players in the pool (or unsold). */
   total: number;
+  /** Players with a price guide. */
+  priced: number;
+  /** False when no AI key is set: prices only. */
+  ai: boolean;
 }
 
-/** Writes notes for the next few players in the pool that don't have any yet. */
-export async function generateBatch(db: SupabaseClient, pool: Pool, size = BATCH_SIZE): Promise<BatchResult> {
-  if (!aiConfigured()) throw new InsightError(503, "ai_not_configured", "Add ANTHROPIC_API_KEY in Vercel to turn on AI suggestions.");
+/**
+ * Recalculates the price guide for every player without an AI note (the
+ * market moves as players are sold), then has the AI write notes for the next
+ * few of them, if an AI key is set.
+ */
+export async function generateBatch(db: SupabaseClient, pool: Pool, size?: number): Promise<BatchResult> {
   const ctx = await poolContext(db, pool);
-  const pending = ctx.brief.filter((p) => !ctx.rows.get(p.id)?.generated_at);
-  if (!pending.length) return { generated: 0, remaining: 0, total: ctx.brief.length };
-  const batch = pending.slice(0, Math.min(Math.max(size, 1), BATCH_SIZE));
-  const priced = ctx.brief
-    .map((p) => ({ name: p.name, fair: ctx.rows.get(p.id)?.price_fair ?? null }))
-    .filter((p): p is { name: string; fair: number } => p.fair !== null);
-  const largestPurse = Math.max(0, ...ctx.market.teams.map((t) => t.purseLeft));
+  const now = new Date().toISOString();
+  const pending = ctx.brief.filter((p) => !ctx.rows.get(p.id)?.summary);
+  if (pending.length) {
+    const { error } = await db.from("player_insights").upsert(
+      pending.map((p) => guideRow(p.id, p.valuation, now)),
+      { onConflict: "player_id" },
+    );
+    if (error) {
+      if (missingColumn(error.code)) throw needsMigration();
+      console.error("Saving the price guide failed", error);
+      throw new InsightError(500, "db_error", "Could not save the prices");
+    }
+  }
+  const total = ctx.brief.length;
+  const provider: Provider | null = aiProvider();
+  if (!provider || !pending.length) return { generated: 0, remaining: pending.length, total, priced: total, ai: !!provider };
 
-  let text: string;
+  const most = batchSizeFor(provider);
+  const batch = pending.slice(0, Math.min(Math.max(Math.floor(size ?? most), 1), most));
+  let reply: { text: string; model: string };
   try {
-    const response = await client().beta.messages.create({
-      model: AI_MODEL,
-      max_tokens: 16000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      output_config: { effort: "medium", format: { type: "json_schema", schema: OUTPUT_SCHEMA as unknown as Record<string, unknown> } },
+    reply = await completeJson(provider, {
       system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: [
-            // Identical for every batch of a pool, so later batches read it from the cache.
-            { type: "text", text: marketBrief(ctx.market, ctx.brief, ctx.matchDays), cache_control: { type: "ephemeral" } },
-            { type: "text", text: batchRequest(batch, priced) },
-          ],
-        },
-      ],
+      user: batchBrief(ctx.market, batch, ctx.matchDays),
+      schema: OUTPUT_SCHEMA as unknown as Record<string, unknown>,
     });
-    if (response.stop_reason === "refusal") throw new InsightError(502, "ai_refused", "The AI declined to answer. Try again.");
-    if (response.stop_reason === "max_tokens") throw new InsightError(502, "ai_too_long", "The AI's answer was cut off. Try again.");
-    text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
   } catch (e) {
     throw friendly(e);
   }
 
   let generated;
   try {
-    generated = readAnswer(text, batch, largestPurse);
+    generated = readAnswer(reply.text, batch, ctx.maxBid, ctx.step);
   } catch (e) {
     console.error("Unreadable AI answer", e instanceof Error ? e.message : e);
     throw new InsightError(502, "ai_unreadable", "The AI's answer couldn't be read. Try again.");
   }
   if (!generated.length) throw new InsightError(502, "ai_empty", "The AI didn't return notes for these players. Try again.");
 
-  const now = new Date().toISOString();
+  const valuation = new Map(batch.map((p) => [p.id, p.valuation]));
   const { error } = await db.from("player_insights").upsert(
     generated.map((g) => ({
       player_id: g.playerId,
@@ -276,8 +368,9 @@ export async function generateBatch(db: SupabaseClient, pool: Pool, size = BATCH
       price_fair: g.priceFair,
       price_stretch: g.priceStretch,
       confidence: g.confidence,
+      valuation: valuation.get(g.playerId),
       generated_at: now,
-      model: AI_MODEL,
+      model: reply.model.slice(0, 100),
     })),
     { onConflict: "player_id" },
   );
@@ -285,10 +378,10 @@ export async function generateBatch(db: SupabaseClient, pool: Pool, size = BATCH
     console.error("Saving insights failed", error);
     throw new InsightError(500, "db_error", "Could not save the notes");
   }
-  return { generated: generated.length, remaining: pending.length - generated.length, total: ctx.brief.length };
+  return { generated: generated.length, remaining: pending.length - generated.length, total, priced: total, ai: true };
 }
 
-/** Clears the notes (not the stats) for a pool, ready to generate again. */
+/** Clears the notes and prices (not the stats) for a pool, ready to generate again. */
 export async function clearInsights(db: SupabaseClient, pool: Pool): Promise<number> {
   const { data: ids } = await db.from("players").select("id").eq("pool", pool);
   const list = (ids ?? []).map((r) => r.id as string);
@@ -305,21 +398,25 @@ export async function clearInsights(db: SupabaseClient, pool: Pool): Promise<num
       price_fair: null,
       price_stretch: null,
       confidence: null,
+      valuation: null,
       generated_at: null,
       model: null,
     })
     .in("player_id", list)
     .select("player_id");
-  if (error) throw new InsightError(500, "db_error", "Could not clear the notes");
+  if (error) {
+    if (missingColumn(error.code)) throw needsMigration();
+    throw new InsightError(500, "db_error", "Could not clear the notes");
+  }
   return data?.length ?? 0;
 }
 
-/** Every player's notes, as owners see them. */
+/** Every player's notes and prices, as owners see them. */
 export async function loadInsights(db: SupabaseClient): Promise<PlayerInsight[]> {
   const { data, error } = await db.from("player_insights").select("*");
   if (error) {
     // Before the migration is run the table doesn't exist: nothing to show.
-    if (error.code === "42P01" || error.code === "PGRST205") return [];
+    if (missingTable(error.code)) return [];
     throw new InsightError(500, "db_error", "Could not load the notes");
   }
   return (data as InsightRow[]).map((r) => ({
@@ -334,8 +431,42 @@ export async function loadInsights(db: SupabaseClient): Promise<PlayerInsight[]>
     priceStretch: r.price_stretch,
     confidence: r.confidence,
     generatedAt: r.generated_at,
+    hasNote: !!r.summary,
+    history: (r.valuation?.history ?? []).map(historyLine),
     statLines: hasStats(r.stats) ? statLines(r.stats) : [],
     // Only ever link to CricHeroes itself.
     cricheroesUrl: r.cricheroes_url && /^https:\/\/(www\.)?cricheroes\.(com|in)\//.test(r.cricheroes_url) ? r.cricheroes_url : null,
   }));
+}
+
+export interface SeasonPrices {
+  season: number;
+  pool: Pool;
+  players: number;
+  sold: number;
+  average: number | null;
+}
+
+export interface AdminStatus {
+  provider: Provider | null;
+  model: string | null;
+  batchSize: number;
+  /** Previous auctions' price lists uploaded so far. */
+  seasons: SeasonPrices[];
+}
+
+export async function adminStatus(db: SupabaseClient): Promise<AdminStatus> {
+  const provider = aiProvider();
+  const past = await loadPastPrices(db);
+  const averages = seasonAverages(past);
+  const groups = new Map<string, SeasonPrices>();
+  for (const p of past) {
+    const k = `${p.season}|${p.pool}`;
+    const g = groups.get(k) ?? { season: p.season, pool: p.pool, players: 0, sold: 0, average: averages.has(k) ? Math.round(averages.get(k)!) : null };
+    g.players++;
+    if (p.price > 0) g.sold++;
+    groups.set(k, g);
+  }
+  const seasons = [...groups.values()].sort((a, b) => a.season - b.season || a.pool.localeCompare(b.pool));
+  return { provider, model: modelName(provider), batchSize: batchSizeFor(provider), seasons };
 }

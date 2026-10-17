@@ -114,31 +114,51 @@ playing owners first. Writing a playing owner's name there too (e.g.
 "Arjun Rao (co-owner)") changes how it shows instead of listing it twice,
 and Settings warns when a name is another team's playing owner.
 
-### AI scouting notes and prices
+### Price guide and AI scouting notes
 
-**Admin → ✨ AI insights** turns previous seasons' stats into a short scouting
-note and a suggested price range (floor / fair / stretch) for every player,
-using Claude. Team owners and admins see them: on player cards, in the
-*AI scout* box when a card is opened, on the owner dashboard (with one-tap
-"set my max to the AI's price"), and in the owner bar when a player comes up.
-The public site and the projector never show them.
+**Admin → ✨ AI insights** gives every player a suggested price range (floor /
+fair / stretch) and, with an AI key, a short scouting note. Team owners and
+admins see them: on player cards, in the *Price guide* / *AI scout* box when
+a card is opened, on the owner dashboard (with one-tap "set my max to the
+suggested price"), and in the owner bar when a player comes up. The public
+site and the projector never show them.
 
-1. Add `ANTHROPIC_API_KEY` in Vercel (Settings → Environment Variables) and
-   redeploy. The key comes from console.anthropic.com → API keys.
+The prices are worked out by the app itself, not guessed by the AI:
+
+- what each player sold for in previous PPL auctions, compared with that
+  season's average (purses change from year to year), the latest season
+  counting most;
+- their PPL MVP points per match and CricHeroes career numbers (small
+  samples are pulled towards the typical player);
+- how many match days they can make;
+- scaled so the players needed to fill the open squad places add up to what
+  the teams have left, kept at or above base price and within the most a
+  team can bid.
+
+The AI (free on Groq, or Claude) writes the note and may move the fair price
+by up to 20% when the data gives a reason. Without an AI key you still get
+the prices.
+
+1. Optional, for the notes: create a free key at console.groq.com → API Keys,
+   add it as `GROQ_API_KEY` in Vercel (Settings → Environment Variables) and
+   redeploy. (`ANTHROPIC_API_KEY` uses Claude instead; with both set, Groq is
+   used unless `AI_PROVIDER=anthropic`.)
 2. Upload the stats export: the zip with `all_players.json` (CricHeroes
    career stats per auction player) and the `pplN_{batting,bowling,fielding,mvp}_leaderboard.csv`
    files. Players are matched by id, then by name; the page lists anyone it
    couldn't match.
-3. Press **Generate** for each pool and keep the page open until it's done.
-   The AI sees every player's stats plus the teams' purses, squad sizes and
-   base prices, so prices are consistent across the pool and add up to what
-   teams can actually spend. Prices are kept on a sensible step, at or above
-   base price and within the largest purse. **Start over** writes them again
-   (e.g. after changing purses or uploading new stats).
+3. Upload each previous season's tracker sheet (Google Sheets → File →
+   Download → Microsoft Excel, or the players tab as .csv) and pick its
+   season. Only name, gender, team and sold price are read; phone numbers,
+   emails and other columns are ignored and never stored.
+4. Press **Generate** (or **Calculate prices** without an AI key) for each
+   pool and keep the page open until it's done. On Groq's free tier it pauses
+   when the per-minute limit is reached and carries on by itself. **Start
+   over** works everything out again (e.g. after changing purses or
+   uploading new data).
 
-Notes are generated once and stored, so the auction itself never waits on the
-AI. A full run costs roughly $1–2 of API credit. Player-written registration
-notes are passed to the AI as information only.
+Prices and notes are stored, so the auction itself never waits on the AI.
+Player-written registration notes are passed to the AI as information only.
 
 ## Setup (one time)
 
@@ -315,8 +335,10 @@ cp .env.example .env.local   # then fill in the local URL and keys printed by `s
 npm run build && npm start
 bash scripts/e2e-users.sh # local test users: admin/owner1/owner2/stranger@test.local
 npm run test:e2e          # drives admin + 2 owners + a viewer in real browsers
-# The AI test uses a fake Anthropic API: start the app with
-#   PUSH_ALLOW_LOCALHOST=1 ANTHROPIC_API_KEY=test-key ANTHROPIC_BASE_URL=http://127.0.0.1:4545 AI_TIMEOUT_MS=5000
+# The AI test uses a fake Groq/Anthropic API on port 4545: start the app with
+#   PUSH_ALLOW_LOCALHOST=1 GROQ_API_KEY=test-groq-key GROQ_BASE_URL=http://127.0.0.1:4545/openai/v1 AI_TIMEOUT_MS=5000
+# (or ANTHROPIC_API_KEY=test-key ANTHROPIC_BASE_URL=http://127.0.0.1:4545, or no
+# key at all for prices only); it adapts to whichever the app runs with.
 ```
 
 To also emulate hosted Supabase's `safeupdate` guard (no `UPDATE`/`DELETE`

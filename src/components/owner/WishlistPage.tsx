@@ -543,7 +543,7 @@ function WishlistRow({ item }: { item: WishlistItem }) {
   );
 }
 
-/** One tap to set "my max" to the AI's fair price or its stretch price. */
+/** One tap to set "my max" to the suggested fair price or its stretch price. */
 function UseAiPrice({ playerId, current }: { playerId: string; current: number | null }) {
   const insight = useInsight(playerId);
   const { update } = useWishlist();
@@ -555,7 +555,7 @@ function UseAiPrice({ playerId, current }: { playerId: string; current: number |
   if (!options.length) return null;
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs">
-      <span className="text-slate-400">Set my max to the AI&apos;s</span>
+      <span className="text-slate-400">Set my max to the suggested</span>
       {options.map((o) => (
         <button
           key={o.label}

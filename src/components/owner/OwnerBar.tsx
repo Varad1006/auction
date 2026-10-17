@@ -185,13 +185,13 @@ export function OwnerBar({ teamId }: { teamId: string }) {
   );
 }
 
-/** The AI's price for the player on the block, in one line. */
+/** The suggested price for the player on the block, in one line. */
 function AiLine({ playerId, name }: { playerId: string; name: string }) {
   const insight = useInsight(playerId);
   if (!insight?.priceFair) return null;
   return (
     <p className="truncate text-xs text-fuchsia-100">
-      ✨ AI on {name}: fair <b className="tabular-nums">{money(insight.priceFair)}</b>, worth up to{" "}
+      {insight.hasNote ? "✨ AI" : "📊 Price guide"} on {name}: fair <b className="tabular-nums">{money(insight.priceFair)}</b>, worth up to{" "}
       <b className="tabular-nums">{money(insight.priceStretch)}</b> if you need them
     </p>
   );
