@@ -8,6 +8,7 @@ import { PlayerDeckCard } from "../live/PlayerDeckCard";
 import { SigningBadge } from "../live/SigningBadge";
 import { TeamBadge } from "../live/TeamBadge";
 import { useAuction } from "../live/useAuction";
+import { AiPriceChip, AiScoutCard } from "../owner/AiScout";
 import { WishlistStar } from "../owner/WishlistStar";
 import { inputClass, Modal } from "../ui";
 
@@ -122,7 +123,10 @@ export function PlayersPage() {
                           <b className="tabular-nums">{money(p.sold_price)}</b>
                         </>
                       ) : (
-                        <span className="text-slate-400">Base {money(p.base_price)}</span>
+                        <>
+                          <span className="text-slate-400">Base {money(p.base_price)}</span>
+                          <AiPriceChip playerId={p.id} />
+                        </>
                       )}
                     </div>
                   </div>
@@ -147,6 +151,7 @@ export function PlayersPage() {
             <div className="flex justify-center">
               <WishlistStar playerId={live.id} playerName={live.name} disabled={live.status === "sold"} withLabel />
             </div>
+            {live.status !== "sold" && <AiScoutCard playerId={live.id} />}
           </div>
         )}
       </Modal>

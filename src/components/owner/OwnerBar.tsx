@@ -8,6 +8,7 @@ import { PRIORITY_LABEL, type WishlistEntry } from "@/lib/wishlist";
 import { useAuction } from "../live/useAuction";
 import { useRevealedPlayer } from "../live/useRevealedPlayer";
 import { useToast } from "../Toast";
+import { useInsight } from "./InsightsProvider";
 import { useWishlist } from "./WishlistProvider";
 
 /**
@@ -153,6 +154,7 @@ export function OwnerBar({ teamId }: { teamId: string }) {
             </span>
           )}
         </div>
+        {revealedId && <AiLine playerId={revealedId} name={playerById.get(revealedId)?.name ?? ""} />}
         {entry && revealedId ? (
           <WishlistStrip
             entry={entry}
@@ -180,5 +182,17 @@ export function OwnerBar({ teamId }: { teamId: string }) {
         )}
       </div>
     </div>
+  );
+}
+
+/** The AI's price for the player on the block, in one line. */
+function AiLine({ playerId, name }: { playerId: string; name: string }) {
+  const insight = useInsight(playerId);
+  if (!insight?.priceFair) return null;
+  return (
+    <p className="truncate text-xs text-fuchsia-100">
+      ✨ AI on {name}: fair <b className="tabular-nums">{money(insight.priceFair)}</b>, worth up to{" "}
+      <b className="tabular-nums">{money(insight.priceStretch)}</b> if you need them
+    </p>
   );
 }

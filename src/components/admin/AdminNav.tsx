@@ -11,6 +11,7 @@ const TABS = [
   { href: "/admin/settings", label: "Settings" },
   { href: "/admin/owners", label: "Owners" },
   { href: "/admin/results", label: "Results" },
+  { href: "/admin/insights", label: "✨ AI insights" },
 ];
 
 export function AdminNav() {

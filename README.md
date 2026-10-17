@@ -111,8 +111,34 @@ the full team size, e.g. "Team of 12: 9 from the auction + 1 star · 2 owners".
 Owners who don't play are only names: add them under **Settings → Teams**
 (*Owners who don't play*, comma-separated). Team pages list every owner,
 playing owners first. Writing a playing owner's name there too (e.g.
-"Nikhil Dhane (co-owner)") changes how it shows instead of listing it twice,
+"Arjun Rao (co-owner)") changes how it shows instead of listing it twice,
 and Settings warns when a name is another team's playing owner.
+
+### AI scouting notes and prices
+
+**Admin → ✨ AI insights** turns previous seasons' stats into a short scouting
+note and a suggested price range (floor / fair / stretch) for every player,
+using Claude. Team owners and admins see them: on player cards, in the
+*AI scout* box when a card is opened, on the owner dashboard (with one-tap
+"set my max to the AI's price"), and in the owner bar when a player comes up.
+The public site and the projector never show them.
+
+1. Add `ANTHROPIC_API_KEY` in Vercel (Settings → Environment Variables) and
+   redeploy. The key comes from console.anthropic.com → API keys.
+2. Upload the stats export: the zip with `all_players.json` (CricHeroes
+   career stats per auction player) and the `pplN_{batting,bowling,fielding,mvp}_leaderboard.csv`
+   files. Players are matched by id, then by name; the page lists anyone it
+   couldn't match.
+3. Press **Generate** for each pool and keep the page open until it's done.
+   The AI sees every player's stats plus the teams' purses, squad sizes and
+   base prices, so prices are consistent across the pool and add up to what
+   teams can actually spend. Prices are kept on a sensible step, at or above
+   base price and within the largest purse. **Start over** writes them again
+   (e.g. after changing purses or uploading new stats).
+
+Notes are generated once and stored, so the auction itself never waits on the
+AI. A full run costs roughly $1–2 of API credit. Player-written registration
+notes are passed to the AI as information only.
 
 ## Setup (one time)
 
@@ -289,6 +315,8 @@ cp .env.example .env.local   # then fill in the local URL and keys printed by `s
 npm run build && npm start
 bash scripts/e2e-users.sh # local test users: admin/owner1/owner2/stranger@test.local
 npm run test:e2e          # drives admin + 2 owners + a viewer in real browsers
+# The AI test uses a fake Anthropic API: start the app with
+#   PUSH_ALLOW_LOCALHOST=1 ANTHROPIC_API_KEY=test-key ANTHROPIC_BASE_URL=http://127.0.0.1:4545 AI_TIMEOUT_MS=5000
 ```
 
 To also emulate hosted Supabase's `safeupdate` guard (no `UPDATE`/`DELETE`

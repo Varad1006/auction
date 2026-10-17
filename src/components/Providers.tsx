@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { LiveProvider } from "./live/LiveProvider";
 import { MeProvider } from "./MeProvider";
+import { InsightsProvider } from "./owner/InsightsProvider";
 import { RegisterServiceWorker } from "./RegisterServiceWorker";
 import { ToastProvider } from "./Toast";
 import { UpdateNotice } from "./UpdateNotice";
@@ -21,7 +22,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
         children
       ) : (
         <MeProvider>
-          <LiveProvider>{children}</LiveProvider>
+          <LiveProvider>
+            <InsightsProvider>{children}</InsightsProvider>
+          </LiveProvider>
         </MeProvider>
       )}
       <RegisterServiceWorker />

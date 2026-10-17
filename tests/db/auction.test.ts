@@ -119,6 +119,10 @@ describe.skipIf(!ADMIN_URL)("auction database", () => {
         "select auction_reset('x')",
         "select admin_delete_player('x', gen_random_uuid())",
         "select admin_delete_team('x', gen_random_uuid())",
+        "select * from player_insights",
+        `insert into player_insights (player_id, summary) values ('${playerId}', 'x')`,
+        "select admin_sign_player('x', gen_random_uuid(), gen_random_uuid(), 'star', 0)",
+        "select admin_set_waitlist('x', gen_random_uuid(), true)",
       ];
       for (const sql of denied) {
         const err = await errorOf(asRole(role, (c) => c.query(sql)));
@@ -550,6 +554,17 @@ describe.skipIf(!ADMIN_URL)("auction database", () => {
       const p = await addPlayer("Blocked");
       await q("select auction_select_player('a', $1)", [p]);
       expect((await errorOf(sign(p, teams[0].id, "owner", 0))).hint).toBe("on_block");
+    });
+  });
+
+  describe("AI insights", () => {
+    it("are removed with their player and keep prices non-negative", async () => {
+      const p = await addPlayer("Insight Player");
+      await q("insert into player_insights (player_id, stats, price_fair, tier) values ($1, '{\"seasons\": []}', 12000, 'solid')", [p]);
+      expect((await errorOf(q("update player_insights set price_fair = -1 where player_id = $1", [p]))).message).toMatch(/check constraint/);
+      expect((await errorOf(q("update player_insights set tier = 'legend' where player_id = $1", [p]))).message).toMatch(/check constraint/);
+      await q("select admin_delete_player('a', $1)", [p]);
+      expect(await q("select 1 from player_insights where player_id = $1", [p])).toHaveLength(0);
     });
   });
 

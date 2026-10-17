@@ -27,6 +27,8 @@ import { useRevealedPlayer } from "../live/useRevealedPlayer";
 import { useMe } from "../MeProvider";
 import { inputClass } from "../ui";
 import { PushToggle } from "../PushToggle";
+import { AiPriceChip, AiScoutCard } from "./AiScout";
+import { useInsight } from "./InsightsProvider";
 import { useWishlist } from "./WishlistProvider";
 import { WishlistStar } from "./WishlistStar";
 
@@ -330,6 +332,8 @@ function BlockIntel({ player, teamId }: { player: Player; teamId: string }) {
         )}
       </dl>
 
+      <AiScoutCard playerId={player.id} compact className="mt-4" />
+
       <div className="mt-4">
         <p className="mb-1.5 text-xs font-bold uppercase tracking-widest text-slate-500">
           Rivals who can still bid {money(next)}+ · {rivals.length}
@@ -474,6 +478,7 @@ function WishlistRow({ item }: { item: WishlistItem }) {
             {status === "unsold" && <span className="mr-1.5 rounded bg-white/10 px-1.5 text-[10px] font-bold uppercase text-slate-300">Unsold</span>}
             {ROLE_ICON[player.role]} {player.role} · base {money(player.base_price)}
             {entry.note && " · 📝"}
+            <AiPriceChip playerId={player.id} className="ml-1.5" />
           </span>
           {entry.note && !open && <span className="block truncate text-xs italic text-slate-500">{entry.note}</span>}
         </span>
@@ -506,7 +511,9 @@ function WishlistRow({ item }: { item: WishlistItem }) {
               </button>
             ))}
           </div>
+          <AiScoutCard playerId={player.id} />
           <MaxPriceEditor entry={entry} />
+          <UseAiPrice playerId={player.id} current={entry.max_price} />
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-slate-300">Private note</span>
             <textarea
@@ -533,6 +540,33 @@ function WishlistRow({ item }: { item: WishlistItem }) {
         </div>
       )}
     </li>
+  );
+}
+
+/** One tap to set "my max" to the AI's fair price or its stretch price. */
+function UseAiPrice({ playerId, current }: { playerId: string; current: number | null }) {
+  const insight = useInsight(playerId);
+  const { update } = useWishlist();
+  if (!insight?.priceFair) return null;
+  const options = [
+    { label: "fair", value: insight.priceFair },
+    { label: "stretch", value: insight.priceStretch },
+  ].filter((o): o is { label: string; value: number } => o.value !== null && o.value !== current);
+  if (!options.length) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs">
+      <span className="text-slate-400">Set my max to the AI&apos;s</span>
+      {options.map((o) => (
+        <button
+          key={o.label}
+          type="button"
+          onClick={() => void update(playerId, { maxPrice: o.value })}
+          className="rounded-full px-2.5 py-1 font-semibold text-fuchsia-100 ring-1 ring-fuchsia-400/40 hover:bg-fuchsia-500/10"
+        >
+          {o.label} {money(o.value)}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -575,6 +609,7 @@ function AddPlayers({ pool }: { pool: Pool }) {
                 <span className="block text-xs text-slate-400">
                   {p.role} · base {money(p.base_price)}
                   {p.status === "unsold" && " · unsold"}
+                  <AiPriceChip playerId={p.id} className="ml-1.5" />
                 </span>
               </span>
               <button

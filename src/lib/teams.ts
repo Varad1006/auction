@@ -1,6 +1,6 @@
 import type { Player, Team } from "./types";
 
-/** "Nikhil Dhane (co-owner)" and "nikhil  dhane" are the same person. */
+/** "Arjun Rao (co-owner)" and "arjun  rao" are the same person. */
 export function ownerKey(name: string): string {
   return name.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
 }

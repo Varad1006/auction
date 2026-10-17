@@ -192,12 +192,12 @@ function TeamRow({ team, limits }: { team: Team; limits: TeamPoolLimit[] }) {
         <Field
           label="Owners who don't play"
           className="w-full"
-          hint="Separated by commas. Playing owners (Admin → Players → Assign → Team owner) are listed on the team pages automatically; write one here only to change how it shows, e.g. “Nikhil Dhane (co-owner)”."
+          hint="Separated by commas. Playing owners (Admin → Players → Assign → Team owner) are listed on the team pages automatically; write one here only to change how it shows, e.g. “Arjun Rao (co-owner)”."
         >
           <input
             className={inputClass}
             maxLength={500}
-            placeholder="e.g. Yogendra Deoskar, Praveen Ganegaonkar (co-owner)"
+            placeholder="e.g. Suresh Iyer, Manoj Gupta (co-owner)"
             value={f.owners}
             onChange={(e) => setF((s) => ({ ...s, owners: e.target.value }))}
           />

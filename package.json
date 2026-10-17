@@ -14,11 +14,13 @@
     "icons": "node scripts/make-icons.mjs",
     "test:db": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://postgres:postgres@localhost:5432/postgres} vitest run tests/db",
     "db:migrate": "node scripts/apply-migrations.mjs",
-    "test:e2e": "node tests/e2e/smoke.mjs && node tests/e2e/register.mjs && node tests/e2e/signings.mjs"
+    "test:e2e": "node tests/e2e/smoke.mjs && node tests/e2e/register.mjs && node tests/e2e/signings.mjs && node tests/e2e/insights.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.131.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.2",
+    "fflate": "0.7.5",
     "jsqr": "^1.4.0",
     "next": "^16.4.0",
     "qrcode": "^1.5.4",
