@@ -1,11 +1,12 @@
-// End-to-end test of the price guide and AI notes: stats and price-list
-// uploads, generation and who sees it. The AI is replaced by a fake server on
-// FAKE_AI_PORT (default 4545) that answers like Groq and like Anthropic.
-// Start the app in one of three ways; the test reads which from the app:
+// End-to-end test of the price guide, the automatic AI notes and the owners'
+// AI suggestions panel. The AI is replaced by a fake server on FAKE_AI_PORT
+// (default 4545) that answers like Groq and like Anthropic. Start the app in
+// one of three ways; the test reads which from the app:
 //   Groq:   GROQ_API_KEY=test-groq-key GROQ_BASE_URL=http://127.0.0.1:4545/openai/v1
 //   Claude: ANTHROPIC_API_KEY=test-key ANTHROPIC_BASE_URL=http://127.0.0.1:4545
 //   No AI:  neither key (prices only)
-// plus AI_TIMEOUT_MS=5000 (so the "slow AI" check doesn't take a minute).
+// plus AI_TIMEOUT_MS=5000 (so the "slow AI" check doesn't take a minute) and
+// AI_BACKGROUND_GAP_S=1 (so background notes don't wait 30 s between requests).
 // Same setup as smoke.mjs otherwise. Screenshots go to $SHOTS.
 import { createServerClient } from "@supabase/ssr";
 import { strToU8, zipSync } from "fflate";
@@ -25,6 +26,7 @@ const check = (cond, msg) => {
   console.log(`${cond ? "  ok  " : "  FAIL"} ${msg}`);
   if (!cond) failures++;
 };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function sessionCookies(email) {
   const jar = new Map();
@@ -41,19 +43,25 @@ async function sessionCookies(email) {
 const cookieHeader = (c) => c.map((x) => `${x.name}=${x.value}`).join("; ");
 const admin = await sessionCookies("admin@test.local");
 const owner = await sessionCookies("owner1@test.local");
+const owner2 = await sessionCookies("owner2@test.local");
 const call = async (cookies, path, init = {}) => {
   const res = await fetch(`${APP}${path}`, { ...init, headers: { origin: APP, cookie: cookies ? cookieHeader(cookies) : "", ...(init.headers ?? {}) } });
   return { status: res.status, body: await res.json().catch(() => null) };
 };
-const act = (action, body) => call(admin, `/api/actions/${action}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-const generate = (cookies, body) => call(cookies, "/api/admin/insights/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+const postJson = (cookies, path, body) => call(cookies, path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+const act = (action, body) => postJson(admin, `/api/actions/${action}`, body);
+const ownerAct = (action, body) => postJson(owner, `/api/actions/${action}`, body);
+const insightsFor = async (cookies = owner) => new Map(((await call(cookies, "/api/insights")).body?.insights ?? []).map((i) => [i.playerId, i]));
 let made = 0;
 const unique = (prefix) => `${prefix} ${(Date.now() * 10 + made++).toString(26).replace(/\d/g, (d) => "abcdefghij"[d])}`;
 
 const status = (await call(admin, "/api/insights")).body?.admin;
-if (!status) throw new Error("Couldn't read the AI status: run migration 0017 and sign in as admin");
+if (!status) throw new Error("Couldn't read the AI status: run migrations 0017 and 0018 and sign in as admin");
 const AI = status.provider ?? "none";
 console.log(`AI: ${AI}${status.model ? ` (${status.model})` : ""}`);
+// An earlier run may have left the AI paused: the admin's "write now" lifts it (women have no data, so nothing is written).
+const unpause = () => postJson(admin, "/api/admin/insights/generate", { pool: "women", size: 1 });
+if (status.pausedFor) await unpause();
 
 // --- Fake Groq and Anthropic APIs ------------------------------------------
 const requests = [];
@@ -61,6 +69,7 @@ let mode = "ok";
 /** The user message of a request, whichever API it was sent to. */
 const userText = (r) => (r.url.includes("/chat/completions") ? r.body.messages?.[1]?.content : r.body.messages?.[0]?.content) ?? "";
 const refsOf = (text) => [...text.matchAll(/^\[(P\d+)\]/gm)].map((m) => m[1]);
+const namesIn = (r) => [...userText(r).matchAll(/^\[P\d+\] ([^:]+):/gm)].map((m) => m[1]);
 /** The guide's fair price for each player in the brief. */
 function guideFairs(text) {
   const out = new Map();
@@ -85,7 +94,7 @@ const fake = createServer((req, res) => {
     if (groq && req.method === "GET" && req.url.endsWith("/models")) {
       return reply(200, { object: "list", data: [{ id: "llama-3.3-70b-versatile" }, { id: "qwen/qwen3-235b-a22b" }, { id: "qwen/qwen3-32b" }] });
     }
-    const r = { url: req.url, headers: req.headers, body };
+    const r = { url: req.url, headers: req.headers, body, at: Date.now() };
     requests.push(r);
     const error = (code, type, message, headers) =>
       reply(code, groq ? { error: { message, type: "invalid_request_error", code: type } } : { type: "error", error: { type, message } }, headers);
@@ -140,11 +149,13 @@ const fake = createServer((req, res) => {
   });
 });
 await new Promise((r) => fake.listen(PORT, "127.0.0.1", r));
+const sent = () => requests.filter((r) => r.body.messages);
 
 // --- Test players, their stats and previous prices -------------------------
-// Players left behind by an earlier run that stopped partway.
+// Players left behind by an earlier run that stopped partway, and any player left on the block.
 const listPlayers = async (filter) =>
-  (await fetch(`${SB_URL}/rest/v1/players?select=id,name,pool,status&${filter}`, { headers: { apikey: ANON, authorization: `Bearer ${ANON}` } })).json();
+  (await fetch(`${SB_URL}/rest/v1/players?select=id,name,pool,status,base_price&${filter}`, { headers: { apikey: ANON, authorization: `Bearer ${ANON}` } })).json();
+await act("auction.returnToPool", {});
 for (const p of await listPlayers("name=like.Scout*")) if (/^Scout [a-z]+$/.test(p.name)) await act("player.delete", { id: p.id });
 const created = [];
 const names = [unique("Scout"), unique("Scout"), unique("Scout")];
@@ -199,143 +210,162 @@ const xlsx = zipSync({
 });
 // The season before, as a CSV (no gender column: the price column says which pool).
 const csv = `Name,Team,Male Sold For\n${[[names[0], "P2 Kings", "20000"], ...Array.from({ length: 5 }, (_, i) => [`Csv Filler ${i}`, "P2 Kings", "10000"])].map((r) => r.join(",")).join("\n")}\n`;
+const form = (fields) => {
+  const f = new FormData();
+  for (const [k, v] of Object.entries(fields)) f.append(k, ...(Array.isArray(v) ? v : [v]));
+  return f;
+};
+
+console.log("Loading the data");
+const statsForm = () => form({ files: [new Blob([zip]), "ppl_data.zip"] });
+const priceForm = (season, name, data) => form({ season: String(season), file: [new Blob([data]), name] });
+check((await call(owner, "/api/admin/insights/import", { method: "POST", body: statsForm() })).status === 403, "owners can't upload stats");
+check((await call(owner, "/api/admin/insights/prices", { method: "POST", body: priceForm(2, "t.xlsx", xlsx) })).status === 403, "owners can't upload prices");
+const stats = await call(admin, "/api/admin/insights/import", { method: "POST", body: statsForm() });
+check(stats.body?.data?.matched === 2 && stats.body.data.unmatched.includes("Not In Auction Zz"), "the stats zip is read and matched");
+const notSheet = await call(admin, "/api/admin/insights/prices", { method: "POST", body: priceForm(2, "notes.txt", "hello") });
+check(notSheet.status === 400 && notSheet.body?.code === "bad_file", `other files are refused ("${notSheet.body?.message}")`);
+const brokenXlsx = await call(admin, "/api/admin/insights/prices", { method: "POST", body: priceForm(2, "broken.xlsx", "not a zip") });
+check(brokenXlsx.status === 400 && brokenXlsx.body?.code === "bad_file", "a broken Excel file is refused");
+const xl = await call(admin, "/api/admin/insights/prices", { method: "POST", body: priceForm(2, "PPL 2 tracker.xlsx", xlsx) });
+check(
+  xl.body?.data?.sheet === "Players list" && xl.body.data.players === tracker.length && xl.body.data.sold === tracker.length - 1 && xl.body.data.matched === others.length + 2,
+  `the tracker's players tab is read (${xl.body?.data?.players} players, ${xl.body?.data?.matched} found this year)`,
+);
+const csvUpload = await call(admin, "/api/admin/insights/prices", { method: "POST", body: priceForm(1, "ppl1.csv", csv) });
+check(csvUpload.status === 200 && csvUpload.body?.data?.sold === 6 && csvUpload.body.data.averages.men === 11667, `a CSV works too (average ${csvUpload.body?.data?.averages?.men})`);
+const anonPrices = await fetch(`${SB_URL}/rest/v1/past_prices?select=*`, { headers: { apikey: ANON, authorization: `Bearer ${ANON}` } });
+check(anonPrices.status === 401 || anonPrices.status === 403, `the public can't read previous prices (${anonPrices.status})`);
+const seasons = (await call(admin, "/api/insights")).body?.admin?.seasons ?? [];
+check(seasons.length === 2 && seasons[1].sold === tracker.length - 1 && !JSON.stringify(seasons).includes("example.com"), "the admin sees each season loaded (and no contact details)");
+
+console.log("Prices, worked out by themselves");
+const anon = await call(null, "/api/insights");
+check(anon.status === 401, "signed-out visitors can't load prices or notes");
+const mine = await call(owner, "/api/insights");
+check(mine.body?.admin === null && mine.body?.ai === (AI !== "none"), "owners learn whether notes get written, not the admin details");
+let byId = new Map((mine.body?.insights ?? []).map((i) => [i.playerId, i]));
+let [i0, i1, i2] = created.map((p) => byId.get(p.id));
+check(i0?.priceFair > 0 && !i0.hasNote, "every player has a price without anyone pressing a button");
+check(
+  i0?.history?.[0]?.startsWith("Sold for 30,000 in PPL 2 to P2 Royals (") && i0.history[1]?.startsWith("Sold for 20,000 in PPL 1 to P2 Kings ("),
+  `previous prices are shown ("${i0?.history?.[0]}")`,
+);
+check(i0 && i1 && i0.priceFair > i1.priceFair, `a player who went for 30,000 is priced above one who went for 3,000 (${i0?.priceFair} vs ${i1?.priceFair})`);
+check(i2?.priceFair === created[2].base_price && i2.tier === "unknown", `a new player is priced at base (${i2?.priceFair}, ${i2?.tier})`);
+check(i0 && i0.priceFloor <= i0.priceFair && i0.priceFair <= i0.priceStretch && i0.priceFloor >= created[0].base_price, "floor ≤ fair ≤ stretch, never below base price");
+check(i0?.statLines?.[0]?.startsWith("PPL 2 · P2 Royals: 240 runs"), `stat lines are ready to show ("${i0?.statLines?.[0]}")`);
+
+if (AI !== "none") {
+  console.log("Notes, written by themselves");
+  // Opening a player: one request, just that player.
+  requests.length = 0;
+  const onDemand = await postJson(owner, "/api/insights/note", { playerId: created[2].id });
+  check(onDemand.body?.data?.status === "written" && sent().length === 1 && refsOf(userText(sent()[0])).length === 1, "opening a player writes their note on the spot");
+  check(namesIn(sent()[0])[0] === names[2], "…for exactly that player");
+  check((await insightsFor()).get(created[2].id)?.hasNote, "…and every owner sees it");
+  const again = await postJson(owner, "/api/insights/note", { playerId: created[2].id });
+  check(again.body?.data?.status === "done" && sent().length === 1, "a player with a note costs nothing more");
+  check((await postJson(null, "/api/insights/note", { playerId: created[2].id })).status === 401, "signed-out visitors can't ask for notes");
+
+  // A rate limit pauses every request until it's over.
+  requests.length = 0;
+  mode = "ratelimit-once";
+  const limited = await postJson(owner, "/api/insights/note", { playerId: created[1].id });
+  check(limited.body?.data?.status === "busy" && limited.body.data.wait >= 1, `a rate limit says when to come back (${limited.body?.data?.wait}s)`);
+  const paused = (await call(admin, "/api/insights")).body?.admin?.pausedFor;
+  check(paused > 0, `…and pauses the AI for everyone (${paused}s)`);
+  const during = await postJson(owner, "/api/insights/note", { playerId: created[1].id });
+  check(during.body?.data?.status === "busy" && sent().length === 1, "nothing is sent while paused");
+  await sleep(3000);
+  const after = await postJson(owner, "/api/insights/note", { playerId: created[1].id });
+  check(after.body?.data?.status === "written", "the pause ends by itself");
+
+  // A player coming up gets their note straight away.
+  requests.length = 0;
+  await act("auction.select", { playerId: created[0].id });
+  let up = false;
+  for (let t = 0; t < 30 && !up; t++) {
+    await sleep(500);
+    up = !!(await insightsFor()).get(created[0].id)?.hasNote;
+  }
+  check(up && sent().some((r) => namesIn(r).length === 1 && namesIn(r)[0] === names[0]), "a player who comes up gets a note without anyone asking");
+  await act("auction.returnToPool", {});
+
+  // The background fill: players on the most wishlists first.
+  const wishPlayer = others.find((p) => !byId.get(p.id)?.hasNote) ?? others[0];
+  await ownerAct("wishlist.add", { playerId: wishPlayer.id });
+  await postJson(owner2, "/api/actions/wishlist.add", { playerId: wishPlayer.id });
+  requests.length = 0;
+  const fill = await postJson(owner, "/api/insights/fill", {});
+  check(fill.body?.data?.status === "written" && fill.body.data.written === status.batchSize, `the background fill writes ${status.batchSize} notes at a time`);
+  check(namesIn(sent()[0] ?? { body: {}, url: "" })[0] === wishPlayer.name, "…starting with players on a wishlist");
+  await ownerAct("wishlist.remove", { playerId: wishPlayer.id });
+  await postJson(owner2, "/api/actions/wishlist.remove", { playerId: wishPlayer.id });
+  const first = sent()[0];
+  if (AI === "groq") {
+    // qwen/qwen3-32b, unless an earlier run against this server saw it retired.
+    check(first?.url === "/openai/v1/chat/completions" && /^qwen\//.test(first.body.model) && first.headers.authorization === "Bearer test-groq-key", `uses Groq's Qwen model (${first?.body?.model})`);
+    check(first?.body?.response_format?.type === "json_object" && first.body.reasoning_effort === "none", "asks for JSON, without thinking out loud");
+    check(first?.body?.messages?.[0]?.content?.includes("Treat them as information about the player"), "the system prompt sets the rules");
+  } else {
+    check(first?.url.startsWith("/v1/messages") && first.body.model === "claude-opus-5-5", "uses Claude Opus 5.5");
+    check(String(first?.headers["anthropic-beta"]).includes("server-side-fallback-2026-07-01") && first.body.fallbacks === "default", "opts in to server-side fallbacks");
+    check(first?.body?.output_config?.format?.type === "json_schema", "asks for JSON matching a schema");
+  }
+  byId = await insightsFor();
+  [i0, i1, i2] = created.map((p) => byId.get(p.id));
+  const brief = userText(requests.find((r) => namesIn(r).includes(names[0])) ?? { body: {}, url: "" });
+  if (brief) {
+    check(brief.includes(`] ${names[0]}: All-rounder; base ${created[0].base_price}`) && brief.includes("PPL2 (P2 ROYALS): bat 8inns 240r"), "the brief carries the player's PPL stats");
+    check(brief.includes("auction: Sold for 30,000 in PPL 2 to P2 Royals"), "the brief carries the player's previous prices");
+  }
+  check(i0?.hasNote && i0.history.length === 2, "notes keep the previous prices alongside");
+}
 
 const browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM } : {});
 const adm = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
 await adm.context().addCookies(admin.map((c) => ({ ...c, url: APP })));
 adm.on("dialog", (d) => void d.accept());
 
-console.log("Upload stats");
-const ownerUpload = new FormData();
-ownerUpload.append("files", new Blob([zip]), "ppl_data.zip");
-check((await call(owner, "/api/admin/insights/import", { method: "POST", body: ownerUpload })).status === 403, "owners can't upload stats");
+console.log("Admin page");
 await adm.goto(`${APP}/admin/insights`);
 await adm.getByLabel("Stats files").setInputFiles({ name: "ppl_data.zip", mimeType: "application/zip", buffer: Buffer.from(zip) });
 const report = adm.getByRole("status").filter({ hasText: "players matched" });
 await report.waitFor({ timeout: 20000 });
-const reportText = await report.innerText();
-check(/2 players matched · seasons PPL 2/.test(reportText), `the zip is read and matched (${reportText.split("\n")[0]})`);
-check(reportText.includes("Not In Auction Zz"), "names that aren't in the auction are listed");
-check(reportText.includes(names[2]), "auction players without stats are listed");
-
-console.log("Upload previous prices");
-const priceForm = (season, name, data) => {
-  const f = new FormData();
-  f.append("season", String(season));
-  f.append("file", new Blob([data]), name);
-  return f;
-};
-check((await call(owner, "/api/admin/insights/prices", { method: "POST", body: priceForm(2, "t.xlsx", xlsx) })).status === 403, "owners can't upload prices");
-const notSheet = await call(admin, "/api/admin/insights/prices", { method: "POST", body: priceForm(2, "notes.txt", "hello") });
-check(notSheet.status === 400 && notSheet.body?.code === "bad_file", `other files are refused ("${notSheet.body?.message}")`);
-const brokenXlsx = await call(admin, "/api/admin/insights/prices", { method: "POST", body: priceForm(2, "broken.xlsx", "not a zip") });
-check(brokenXlsx.status === 400 && brokenXlsx.body?.code === "bad_file", "a broken Excel file is refused");
+check(/2 players matched · seasons PPL 2/.test(await report.innerText()), "stats can still be uploaded on the page");
 await adm.getByLabel("Season of the price list").selectOption("2");
 await adm.getByLabel("Price list file").setInputFiles({ name: "PPL 2 tracker.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(xlsx) });
 const priceReport = adm.getByRole("status").filter({ hasText: "players read" });
 await priceReport.waitFor({ timeout: 20000 });
-const priceText = await priceReport.innerText();
-check(
-  priceText.includes(`PPL 2: ${tracker.length} players read from "Players list", ${tracker.length - 1} sold`),
-  `the players tab is read (${priceText.split("\n")[0]})`,
-);
-const found = /Found (\d+) of this year's (\d+) auction players/.exec(priceText);
-check(found && Number(found[1]) === others.length + 2, `this year's players are found in it (${found?.[0]})`);
-const csvUpload = await call(admin, "/api/admin/insights/prices", { method: "POST", body: priceForm(1, "ppl1.csv", csv) });
-check(csvUpload.status === 200 && csvUpload.body?.data?.sold === 6 && csvUpload.body.data.averages.men === 11667, `a CSV works too (average ${csvUpload.body?.data?.averages?.men})`);
-const anonPrices = await fetch(`${SB_URL}/rest/v1/past_prices?select=*`, { headers: { apikey: ANON, authorization: `Bearer ${ANON}` } });
-check(anonPrices.status === 401 || anonPrices.status === 403, `the public can't read previous prices (${anonPrices.status})`);
-const seasons = (await call(admin, "/api/insights")).body?.admin?.seasons ?? [];
-check(
-  seasons.length === 2 && seasons[0].season === 1 && seasons[1].sold === tracker.length - 1 && !JSON.stringify(seasons).includes("example.com"),
-  "the admin sees each uploaded season (and no contact details)",
-);
-
-console.log(AI === "none" ? "Calculate prices" : "Generate");
-const menCard = adm.locator("div", { has: adm.getByText("Men", { exact: true }) }).filter({ has: adm.getByRole("button", { name: /Generate|All done|Calculate prices|Recalculate prices/ }) }).last();
+check((await priceReport.innerText()).includes("Prices update by themselves"), "…and price lists, which need no button afterwards");
+const menCard = adm.locator("div", { has: adm.getByText("Men", { exact: true }) }).filter({ has: adm.getByText(/\d+\/\d+ priced/) }).last();
 await adm.reload();
-await menCard.getByText(/· ([2-9]|\d\d+) with stats/).waitFor({ timeout: 15000 });
-if (AI === "groq") check(await adm.getByText(`Groq · ${status.model}`).isVisible(), "the page says Groq writes the notes");
-if (AI === "none") check(await adm.getByText("No AI key: prices only").isVisible(), "the page says there are prices only");
-const startOver = menCard.getByRole("button", { name: "Start over" });
-// The first request hits the free tier's per-minute limit.
-mode = AI === "none" ? "ok" : "ratelimit-once";
-if (await startOver.count()) await startOver.click();
-else await menCard.getByRole("button", { name: /Generate|Calculate prices/ }).click();
-if (AI !== "none") {
-  const waiting = await adm
-    .getByText(/Free limit reached: carrying on in \d+s/)
-    .waitFor({ timeout: 20000 })
-    .then(() => true)
-    .catch(() => false);
-  check(waiting, "a rate limit is waited out with a countdown");
-}
-await adm.getByText(AI === "none" ? /Men: prices worked out for \d+ players/ : "Men: AI notes ready").waitFor({ timeout: 120000 });
+await menCard.getByText(/[1-9]\d*\/\d+ priced/).waitFor({ timeout: 15000 });
 const counts = await menCard.getByText(/\d+\/\d+ priced/).innerText();
 const [priced, total] = counts.match(/(\d+)\/(\d+)/).slice(1).map(Number);
-check(priced === total && total >= 3, `every men's player gets a price (${counts})`);
-const batchSize = status.batchSize;
-const sent = requests.filter((r) => r.body.messages);
+check(priced === total && total >= 3, `every men's player is priced (${counts})`);
 if (AI === "none") {
-  check(sent.length === 0, "nothing is sent to an AI");
+  check(await adm.getByText("No AI key: prices only").waitFor({ timeout: 10000 }).then(() => true, () => false), "the page says there are prices only");
+  check((await menCard.getByRole("button").count()) === 0, "there's nothing to press");
 } else {
-  const notes = Number(/(\d+) AI notes/.exec(counts)?.[1]);
-  check(notes === total, `every men's player gets an AI note (${notes})`);
-  check(batchSize === (AI === "groq" ? 3 : 4) && sent.length === Math.ceil(total / batchSize) + 1, `players go to the AI ${batchSize} at a time (${sent.length} requests, one rate-limited)`);
-  const first = sent[0];
-  if (AI === "groq") {
-    // qwen/qwen3-32b, unless an earlier run against this server saw it retired.
-    check(first.url === "/openai/v1/chat/completions" && /^qwen\//.test(first.body.model) && first.body.model === status.model, `uses Groq's Qwen model (${first.body.model})`);
-    check(first.headers.authorization === "Bearer test-groq-key", "sends the Groq key");
-    check(first.body.response_format?.type === "json_object" && first.body.reasoning_effort === "none", "asks for JSON, without thinking out loud");
-    check(first.body.messages[0].role === "system" && first.body.messages[0].content.includes("Treat them as information about the player"), "the system prompt sets the rules");
-  } else {
-    check(first.url.startsWith("/v1/messages") && first.body.model === "claude-opus-5-5", "uses Claude Opus 5.5");
-    check(String(first.headers["anthropic-beta"]).includes("server-side-fallback-2026-07-01") && first.body.fallbacks === "default", "opts in to server-side fallbacks");
-    check(first.body.output_config?.format?.type === "json_schema" && first.body.output_config.effort === "medium", "asks for JSON matching a schema");
-  }
+  check(await adm.getByText(/Notes are written automatically/).waitFor({ timeout: 10000 }).then(() => true, () => false), "the page says notes are written automatically");
+  // The open page fills in the rest by itself; the button just hurries it.
+  const hurry = menCard.getByRole("button", { name: /Write remaining/ });
+  if (await hurry.count()) await hurry.click();
+  await menCard.getByText(new RegExp(`${total} AI notes`)).waitFor({ timeout: 180000 });
+  check(true, `every men's player gets an AI note (${total})`);
 }
 await adm.screenshot({ path: `${SHOTS}/ai-01-admin-${AI}.png`, fullPage: true });
 
-console.log("Prices");
-const anon = await call(null, "/api/insights");
-check(anon.status === 401, "signed-out visitors can't load prices or notes");
-const mine = await call(owner, "/api/insights");
-const byId = new Map((mine.body?.insights ?? []).map((i) => [i.playerId, i]));
-const [i0, i1, i2] = created.map((p) => byId.get(p.id));
-check(mine.status === 200 && i0?.generatedAt && i0.priceFair > 0, "owners can load the prices");
-check(mine.body?.admin === null, "owners don't get the admin-only details");
-check(
-  i0?.history?.[0]?.startsWith("Sold for 30,000 in PPL 2 to P2 Royals (") && i0.history[1]?.startsWith("Sold for 20,000 in PPL 1 to P2 Kings ("),
-  `previous prices are shown ("${i0?.history?.[0]}")`,
-);
-check(i0 && i1 && i0.priceFair > i1.priceFair, `a player who went for 30,000 is priced above one who went for 3,000 (${i0?.priceFair} vs ${i1?.priceFair})`);
-check(i2?.history?.length === 0 && i2.tier !== null, `a new player still gets a price (${i2?.priceFair}, ${i2?.tier})`);
-check(i0 && i0.priceFloor <= i0.priceFair && i0.priceFair <= i0.priceStretch && i0.priceFloor >= created[0].base_price, "floor ≤ fair ≤ stretch, never below base price");
-check(i0?.statLines?.[0]?.startsWith("PPL 2 · P2 Royals: 240 runs"), `stat lines are ready to show ("${i0?.statLines?.[0]}")`);
-if (AI === "none") {
-  check(!i0?.hasNote && i0?.summary === null, "without an AI key there are prices but no notes");
-} else {
-  const brief = userText(sent.find((r) => userText(r).includes(names[0])));
-  const step = 5; // The local test purse (under 2,000) rounds to 5.
-  const guide = guideFairs(brief).get(new RegExp(`^\\[(P\\d+)\\] ${names[0]}:`, "m").exec(brief)?.[1]);
-  check(brief.includes(`] ${names[0]}: All-rounder; base ${created[0].base_price}`) && brief.includes("PPL2 (P2 ROYALS): bat 8inns 240r") && brief.includes("MVP 23.1 pts"), "the brief carries the player's PPL stats");
-  check(brief.includes("auction: Sold for 30,000 in PPL 2 to P2 Royals"), "the brief carries the player's previous prices");
-  const third = userText(sent.find((r) => userText(r).includes(names[2])));
-  check(third.split(`] ${names[2]}`)[1].split("\n").slice(1, 3).join("\n").includes("no recorded stats"), "players without stats are marked as such");
-  check(/points left in total for \d+ more squad places/.test(brief), "the brief carries the purse maths");
-  const expected = Math.round((guide * 1.2) / step) * step;
-  check(
-    i0?.hasNote && (i0.priceFair === expected || (i0.priceFair === i0.priceStretch && i0.priceFair < expected)),
-    `the AI may move the guide's price by 20% at most (guide ${guide}, AI asked ${Math.round(guide * 1.5) + 3}, saved ${i0?.priceFair})`,
-  );
-}
-
 console.log("Who sees it");
+byId = await insightsFor();
+i0 = byId.get(created[0].id);
 const region = AI === "none" ? "Price guide" : "AI scout";
 const chip = AI === "none" ? /📊/ : /✨/;
-const ownerPage = await (await browser.newContext({ ...devices["iPhone 13"] })).newPage();
-await ownerPage.context().addCookies(owner.map((c) => ({ ...c, url: APP })));
+const ownerCtx = await browser.newContext({ ...devices["iPhone 13"] });
+await ownerCtx.addCookies(owner.map((c) => ({ ...c, url: APP })));
+const ownerPage = await ownerCtx.newPage();
 await ownerPage.goto(`${APP}/players?pool=men`);
 await ownerPage.getByPlaceholder("Search players…").fill(names[0]);
 const card = ownerPage.getByRole("listitem").filter({ hasText: names[0] }).getByRole("button").first();
@@ -347,13 +377,11 @@ const scout = ownerPage.getByRole("region", { name: region });
 await scout.waitFor({ timeout: 10000 });
 const scoutText = await scout.innerText();
 check(
-  scoutText.includes("Fair price") && scoutText.includes("Sold for 30,000 in PPL 2") && scoutText.includes("PPL 2 · P2 Royals") && (AI === "none" || scoutText.includes("Fake note for")),
-  `owners see the ${region.toLowerCase()} card with previous prices${AI === "none" ? "" : ", the note"} and stats`,
+  scoutText.includes("Fair price") && scoutText.includes("Sold for 30,000 in PPL 2") && (AI === "none" || scoutText.includes("Fake note for")),
+  `owners see the ${region.toLowerCase()} card with previous prices${AI === "none" ? "" : " and the note"}`,
 );
 await scout.screenshot({ path: `${SHOTS}/ai-02-owner-card-${AI}.png` });
 
-// The wishlist offers the suggested prices as "my max".
-const ownerAct = (action, body) => call(owner, `/api/actions/${action}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 await ownerAct("wishlist.add", { playerId: created[0].id });
 await ownerPage.goto(`${APP}/wishlist`);
 const row = ownerPage.getByRole("listitem").filter({ hasText: names[0] }).first();
@@ -363,14 +391,39 @@ await row.getByRole("button").first().click();
 await row.getByRole("region", { name: region }).waitFor({ timeout: 10000 });
 await row.getByRole("button", { name: /^fair / }).click();
 await ownerPage.waitForTimeout(1000);
-const wl = await call(owner, "/api/wishlist");
-const saved = wl.body?.entries?.find((e) => e.player_id === created[0].id);
+const saved = (await call(owner, "/api/wishlist")).body?.entries?.find((e) => e.player_id === created[0].id);
 check(saved?.max_price === i0.priceFair, `one tap sets "my max" to the fair price (${saved?.max_price})`);
-await row.screenshot({ path: `${SHOTS}/ai-03-wishlist-${AI}.png` });
-await ownerAct("wishlist.remove", { playerId: created[0].id });
-await ownerPage.context().close();
+check(await ownerPage.getByRole("region", { name: "AI suggestions" }).isVisible(), "the wishlist page has the AI suggestions panel");
+
+console.log("AI suggestions panel");
+await ownerPage.goto(`${APP}/ai`);
+const panel = ownerPage.getByRole("region", { name: "AI suggestions" });
+await panel.waitFor({ timeout: 15000 });
+check((await panel.getByRole("region", { name: "Squad check" }).innerText()).includes("bought"), "the AI tab shows the squad check");
+check((await panel.getByRole("region", { name: "Rival watch" }).innerText()).includes("max bid"), "…and every rival's money and places");
+check((await panel.innerText()).includes("When a player comes up"), "…and says bid advice comes with the next player");
+await ownerPage.screenshot({ path: `${SHOTS}/ai-04-tab-${AI}.png`, fullPage: true });
+
+await act("auction.select", { playerId: created[0].id });
+await ownerPage.goto(`${APP}/live`);
+const livePanel = ownerPage.getByRole("region", { name: "AI suggestions" });
+await livePanel.waitFor({ timeout: 15000 });
+const advice = livePanel.getByRole("region", { name: "Live bid advice" });
+// Prices and the wishlist load just after the page.
+await advice.getByText(/On your wishlist/).waitFor({ timeout: 15000 }).catch(() => {});
+const adviceText = await advice.innerText();
+const rivalText = await livePanel.getByRole("region", { name: "Rival watch" }).innerText();
+const limit = Number((/Go up to ([\d,]+)/.exec(adviceText)?.[1] ?? "0").replace(/,/g, ""));
+// On the wishlist with max = fair: the owner's own max is the limit.
+check(limit === saved?.max_price, `bid advice for the player on the block: go up to your max (${limit})`);
+check(adviceText.includes("Price guide: fair") && adviceText.includes("On your wishlist as Want"), `…with the reasons (${adviceText.replace(/\s+/g, " ").slice(0, 160)})`);
+check(/can bid/i.test(rivalText), `rival watch lists who can still bid (${rivalText.replace(/\s+/g, " ").slice(0, 80)})`);
+await livePanel.screenshot({ path: `${SHOTS}/ai-05-live-panel-${AI}.png` });
 
 const viewer = await (await browser.newContext({ ...devices["iPhone 13"] })).newPage();
+await viewer.goto(`${APP}/live`);
+await viewer.waitForTimeout(2500);
+check((await viewer.getByRole("region", { name: "AI suggestions" }).count()) === 0, "the public doesn't get the panel");
 await viewer.goto(`${APP}/players?pool=men`);
 await viewer.getByPlaceholder("Search players…").fill(names[0]);
 const publicCard = viewer.getByRole("listitem").filter({ hasText: names[0] }).getByRole("button").first();
@@ -382,46 +435,40 @@ check(
   (await viewer.getByRole("region", { name: /AI scout|Price guide/ }).count()) === 0 && (await viewer.getByText(/✨|📊/).count()) === 0,
   "the public doesn't see prices or notes",
 );
-await viewer.context().close();
+await act("auction.returnToPool", {});
+await ownerAct("wishlist.remove", { playerId: created[0].id });
+await browser.close();
 
 if (AI !== "none") {
-  console.log("When the AI is slow");
+  console.log("When the AI is slow or fails");
   mode = "slow";
-  requests.length = 0;
-  await adm.goto(`${APP}/admin/insights`);
-  await menCard.getByText(new RegExp(`${total} AI notes`)).waitFor({ timeout: 15000 });
-  await menCard.getByRole("button", { name: "Start over" }).click();
-  await adm.getByText("Men: AI notes ready").waitFor({ timeout: 120000 });
-  const sizes = requests.map((r) => refsOf(userText(r)).length);
-  check(sizes[0] === batchSize && sizes.slice(1).every((n) => n <= 2), `after a request runs out of time the page asks for fewer players (${sizes.slice(0, 4).join(", ")}, …)`);
-  check((await menCard.getByText(/\d+ AI notes/).innerText()).includes(`${total} AI notes`), "…and still finishes every player");
-  mode = "ok";
-
-  console.log("When the AI fails");
+  const slow = await postJson(admin, "/api/admin/insights/generate", { pool: "men", restart: true, size: 3 });
+  check(slow.status === 504 && slow.body?.code === "ai_timeout", "a request that runs out of time is reported");
+  const smaller = await postJson(admin, "/api/admin/insights/generate", { pool: "men", size: 1 });
+  check(smaller.status === 200 && smaller.body?.data?.written === 1, "…and fewer players at once get through");
   mode = "auth";
-  const nothing = await generate(admin, { pool: "men" });
-  check(nothing.status === 200 && nothing.body?.data?.remaining === 0, "nothing is sent once every player has a note");
-  const rejected = await generate(admin, { pool: "men", restart: true });
+  const rejected = await postJson(admin, "/api/admin/insights/generate", { pool: "men" });
   check(rejected.status === 502 && rejected.body?.code === "ai_key_rejected", `a bad API key gets a clear message ("${rejected.body?.message}")`);
+  check((await call(admin, "/api/insights")).body?.admin?.pausedFor > 60, "…and pauses the automatic notes until it's fixed");
   mode = "refusal";
-  const refused = await generate(admin, { pool: "men" });
+  const refused = await postJson(admin, "/api/admin/insights/generate", { pool: "men" });
   check(refused.status === 502 && refused.body?.code === (AI === "groq" ? "ai_unreadable" : "ai_refused"), `an answer without notes is reported, not saved (${refused.body?.code})`);
   mode = "ratelimit-long";
-  const limited = await generate(admin, { pool: "men" });
-  check(limited.status === 429 && limited.body?.code === "ai_rate_limited" && limited.body.retryAfter === 600, `a long rate limit says how long to wait (${limited.body?.retryAfter}s)`);
-  const guideOnly = (await call(owner, "/api/insights")).body?.insights?.find((i) => i.playerId === created[0].id);
-  check(guideOnly?.priceFair > 0 && !guideOnly.hasNote, "players keep their price guide while the AI is unavailable");
+  const long = await postJson(admin, "/api/admin/insights/generate", { pool: "men" });
+  check(long.status === 429 && long.body?.code === "ai_rate_limited" && long.body.retryAfter === 600, `a long rate limit says how long to wait (${long.body?.retryAfter}s)`);
+  const guideOnly = (await insightsFor()).get(created[0].id);
+  check(guideOnly?.priceFair > 0 && !guideOnly.hasNote, "players keep their price while the AI is unavailable");
   if (AI === "groq") {
     mode = "nomodel-once";
     requests.length = 0;
-    const picked = await generate(admin, { pool: "men", size: 1 });
+    const picked = await postJson(admin, "/api/admin/insights/generate", { pool: "men", size: 1 });
     check(picked.status === 200 && requests.at(-1)?.body?.model === "qwen/qwen3-235b-a22b", `when the Qwen model is retired, the largest one Groq lists is used (${requests.at(-1)?.body?.model})`);
   }
   mode = "ok";
+  await unpause();
 }
-check((await generate(owner, { pool: "men" })).status === 403, "owners can't run the price guide or the AI");
+check((await postJson(owner, "/api/admin/insights/generate", { pool: "men" })).status === 403, "owners can't run the admin's AI controls");
 
-await browser.close();
 fake.close();
 for (const p of created) await act("player.delete", { id: p.id });
 

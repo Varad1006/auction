@@ -2,6 +2,7 @@
 // Needs a local Postgres: TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
 // (a fresh "auction_test" database is created from the migrations).
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -122,6 +123,8 @@ describe.skipIf(!ADMIN_URL)("auction database", () => {
         "select * from player_insights",
         `insert into player_insights (player_id, summary) values ('${playerId}', 'x')`,
         "select * from past_prices",
+        "select * from ai_status",
+        "select claim_insight_notes(array[]::uuid[], 0)",
         "insert into past_prices (season, pool, name, price) values (1, 'men', 'x', 1)",
         "select admin_sign_player('x', gen_random_uuid(), gen_random_uuid(), 'star', 0)",
         "select admin_set_waitlist('x', gen_random_uuid(), true)",
@@ -568,6 +571,28 @@ describe.skipIf(!ADMIN_URL)("auction database", () => {
       await q("update player_insights set valuation = $2 where player_id = $1", [p, JSON.stringify({ fair: 12000, history: [] })]);
       await q("select admin_delete_player('a', $1)", [p]);
       expect(await q("select 1 from player_insights where player_id = $1", [p])).toHaveLength(0);
+    });
+
+    it("are claimed by one request at a time, at a pace, and not while paused", async () => {
+      const a = await addPlayer("Claim A");
+      const b = await addPlayer("Claim B");
+      await q("update ai_status set last_call_at = null, blocked_until = null where id = 1");
+      const claim = async (ids: string[], gap: number) =>
+        (await q<{ id: string }>("select claim_insight_notes($1::uuid[], $2) as id", [ids, gap])).map((r) => r.id).sort();
+      expect(await claim([a], 30)).toEqual([a]);
+      // Within the gap: nothing, even for another player. Without a gap: only players not already claimed.
+      expect(await claim([b], 30)).toEqual([]);
+      expect(await claim([a, b], 0)).toEqual([b]);
+      // A player with a note is never claimed; a stale claim can be taken over.
+      await q("update player_insights set summary = 'Done.' where player_id = $1", [b]);
+      await q("update player_insights set note_claimed_at = now() - interval '5 minutes' where player_id = $1", [a]);
+      expect(await claim([a, b], 0)).toEqual([a]);
+      await q("update player_insights set note_claimed_at = null where player_id = $1", [a]);
+      await q("update ai_status set blocked_until = now() + interval '1 minute' where id = 1");
+      expect(await claim([a], 0)).toEqual([]);
+      await q("update ai_status set last_call_at = null, blocked_until = null where id = 1");
+      // Deleted players are skipped, not an error.
+      expect(await claim([randomUUID()], 0)).toEqual([]);
     });
 
     it("keep previous prices sane", async () => {

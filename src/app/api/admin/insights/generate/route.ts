@@ -3,7 +3,7 @@ import { z } from "zod";
 import { POOLS } from "@/lib/types";
 import { aiProvider, batchSizeFor } from "@/server/ai";
 import { isSameOrigin, jsonError, requireRole } from "@/server/http";
-import { clearInsights, generateBatch, InsightError } from "@/server/insights";
+import { clearInsights, InsightError, writeNotesNow } from "@/server/insights";
 import { adminSupabase } from "@/server/supabase";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +17,8 @@ const input = z.object({
   size: z.number().int().min(1).optional(),
 });
 
+// The admin's "write the rest now". Notes are also written automatically, so
+// this is never required.
 export async function POST(req: NextRequest) {
   if (!isSameOrigin(req)) return jsonError(403, "cross_origin", "Cross-site request rejected");
   const guard = await requireRole(["admin"]);
@@ -31,8 +33,8 @@ export async function POST(req: NextRequest) {
       await db.from("audit_log").insert({ actor: guard.me.email, action: "clear_insights", details: { pool: body.data.pool, cleared } });
     }
     const size = Math.min(body.data.size ?? Infinity, batchSizeFor(aiProvider()));
-    const result = await generateBatch(db, body.data.pool, size);
-    if (result.generated) {
+    const result = await writeNotesNow(db, body.data.pool, size);
+    if (result.written) {
       await db.from("audit_log").insert({ actor: guard.me.email, action: "generate_insights", details: { pool: body.data.pool, ...result } });
     }
     return NextResponse.json({ ok: true, data: result });

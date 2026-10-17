@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { strFromU8, unzipSync } from "fflate";
 import {
+  applyNudge,
   batchBrief,
   marketNumbers,
   OUTPUT_SCHEMA,
@@ -11,20 +12,18 @@ import {
   statLines,
   SYSTEM_PROMPT,
   type BriefPlayer,
+  type GeneratedInsight,
   type Market,
   type PlayerInsight,
 } from "@/lib/insights";
 import { parsePriceCsv, parsePriceWorkbook, type PastPriceRow } from "@/lib/price-lists";
 import { teamPoolSummary } from "@/lib/rules";
 import { matchPlayers, parseStatsFiles, type PlayerStats } from "@/lib/stats-import";
-import { POOL_LABEL, type Player, type Pool, type PoolConfig, type Team, type TeamPoolLimit } from "@/lib/types";
+import { POOL_LABEL, POOLS, type Player, type Pool, type PoolConfig, type Team, type TeamPoolLimit } from "@/lib/types";
 import { historyLine, priceHistory, seasonAverages, valuePool, type PastPrice, type Valuation } from "@/lib/valuation";
 import { readXlsx } from "@/lib/xlsx";
 import { AiError, aiProvider, batchSizeFor, completeJson, modelName, type Provider } from "./ai";
 import { registrationSettings } from "./registration";
-
-/** Saved as the model of prices worked out without the AI. */
-export const GUIDE_MODEL = "price-guide";
 
 export class InsightError extends Error {
   constructor(
@@ -41,7 +40,13 @@ export class InsightError extends Error {
 // Tables and columns from a migration that hasn't been run yet.
 const missingTable = (code?: string) => code === "42P01" || code === "PGRST205";
 const missingColumn = (code?: string) => code === "42703" || code === "PGRST204";
+const missingFunction = (code?: string) => code === "42883" || code === "PGRST202";
 const needsMigration = () => new InsightError(503, "migration_needed", "Run the latest SQL update in Supabase first.");
+
+// Every owner reloads at once after a sale: one calculation serves them all.
+// Cleared whenever this server changes the data behind it.
+let cached: { at: number; data: PlayerInsight[] } | null = null;
+const CACHE_MS = 3000;
 
 // ---------------------------------------------------------------------------
 // Importing stats
@@ -104,6 +109,7 @@ export async function importStats(db: SupabaseClient, files: Record<string, stri
       throw new InsightError(500, "db_error", "Could not save the stats");
     }
   }
+  cached = null;
   const got = new Set(matched.map((m) => m.player.id));
   const withoutStats = (players as { id: string; name: string; status: string }[])
     .filter((p) => (p.status === "pool" || p.status === "unsold") && !got.has(p.id))
@@ -168,6 +174,7 @@ export async function importPrices(db: SupabaseClient, season: number, upload: {
     throw new InsightError(500, "db_error", "Could not save the prices");
   }
 
+  cached = null;
   const past: PastPrice[] = rows.map((r) => ({ season, ...r }));
   const averages = seasonAverages(past);
   const { data: players } = await db.from("players").select("name, pool, status");
@@ -194,8 +201,11 @@ async function loadPastPrices(db: SupabaseClient): Promise<PastPrice[]> {
 }
 
 // ---------------------------------------------------------------------------
-// The price guide and the AI's notes
+// The price guide, worked out live
 // ---------------------------------------------------------------------------
+
+/** The guide as it stood when the AI wrote a note, with the AI's adjustment. */
+type StoredValuation = Valuation & { nudge?: number };
 
 interface InsightRow {
   player_id: string;
@@ -212,7 +222,9 @@ interface InsightRow {
   confidence: PlayerInsight["confidence"];
   generated_at: string | null;
   /** Missing before migration 0017. */
-  valuation?: Valuation | null;
+  valuation?: StoredValuation | null;
+  /** Missing before migration 0018. */
+  note_claimed_at?: string | null;
 }
 
 const hasStats = (s: InsightRow["stats"] | undefined): s is PlayerStats => !!s && "seasons" in s;
@@ -223,21 +235,62 @@ function availableDays(p: Player): number | null {
   return value ? value.split(",").map((d) => d.trim()).filter(Boolean).length : null;
 }
 
-async function poolContext(db: SupabaseClient, pool: Pool) {
-  const [players, teams, cfg, limits, insights, settings, past] = await Promise.all([
-    db.from("players").select("*").eq("pool", pool).order("name"),
+interface MarketData {
+  players: Player[];
+  teams: Team[];
+  configs: PoolConfig[];
+  limits: TeamPoolLimit[];
+  rows: Map<string, InsightRow>;
+  past: PastPrice[];
+  matchDays: number;
+  /** The player on the block, if any. */
+  onBlock: string | null;
+}
+
+async function loadMarket(db: SupabaseClient): Promise<MarketData> {
+  const [players, teams, configs, limits, insights, state, settings, past] = await Promise.all([
+    db.from("players").select("*").order("name"),
     db.from("teams").select("*").order("sort_order").order("name"),
-    db.from("pool_config").select("*").eq("pool", pool).single(),
-    db.from("team_pool_limits").select("*").eq("pool", pool),
+    db.from("pool_config").select("*"),
+    db.from("team_pool_limits").select("*"),
     db.from("player_insights").select("*"),
+    db.from("auction_state").select("current_player_id, phase").limit(1).maybeSingle(),
     registrationSettings(db),
     loadPastPrices(db),
   ]);
-  const failed = [players, teams, cfg, limits, insights].find((r) => r.error);
+  const failed = [players, teams, configs, limits, state].find((r) => r.error);
   if (failed?.error) throw new InsightError(500, "db_error", "Could not load the auction data");
-  const all = players.data as Player[];
-  const config = cfg.data as PoolConfig;
-  const summaries = (teams.data as Team[]).map((t) => ({ team: t, s: teamPoolSummary(t.id, pool, config, limits.data as TeamPoolLimit[], all) }));
+  // Before the migration is run the table doesn't exist: nothing stored yet.
+  if (insights.error && !missingTable(insights.error.code)) throw new InsightError(500, "db_error", "Could not load the notes");
+  const s = state.data as { current_player_id: string | null; phase: string } | null;
+  return {
+    players: players.data as Player[],
+    teams: teams.data as Team[],
+    configs: configs.data as PoolConfig[],
+    limits: limits.data as TeamPoolLimit[],
+    rows: new Map(((insights.data ?? []) as InsightRow[]).map((r) => [r.player_id, r])),
+    past,
+    matchDays: settings.availability_options.length,
+    onBlock: s && ["spinning", "revealed", "bidding"].includes(s.phase) ? s.current_player_id : null,
+  };
+}
+
+interface PoolContext {
+  market: Market;
+  /** Players still to be auctioned, with their price guide. */
+  brief: BriefPlayer[];
+  maxBid: number;
+  step: number;
+  matchDays: number;
+  /** Some player has stats or a previous price: without any, there's no guide. */
+  hasData: boolean;
+}
+
+function poolContext(m: MarketData, pool: Pool): PoolContext | null {
+  const config = m.configs.find((c) => c.pool === pool);
+  if (!config) return null;
+  const all = m.players.filter((p) => p.pool === pool);
+  const summaries = m.teams.map((t) => ({ team: t, s: teamPoolSummary(t.id, pool, config, m.limits, all) }));
   const market: Market = {
     pool,
     poolLabel: POOL_LABEL[pool],
@@ -245,12 +298,10 @@ async function poolContext(db: SupabaseClient, pool: Pool) {
     basePrices: { A: config.base_price_a, B: config.base_price_b, C: config.base_price_c },
     sold: all.filter((p) => p.status === "sold" && !p.signing).map((p) => ({ name: p.name, price: p.sold_price ?? 0 })),
   };
-  const rows = new Map((insights.data as InsightRow[]).map((r) => [r.player_id, r]));
   const statsOf = (id: string) => {
-    const s = rows.get(id)?.stats;
+    const s = m.rows.get(id)?.stats;
     return hasStats(s) ? s : null;
   };
-  const matchDays = settings.availability_options.length;
   const numbers = marketNumbers(market);
   const maxBid = Math.max(0, ...summaries.map(({ s }) => s.maxBid));
   const step = priceStep(Math.max(0, ...market.teams.map((t) => t.purseLeft)));
@@ -258,8 +309,8 @@ async function poolContext(db: SupabaseClient, pool: Pool) {
   const available = all.filter((p) => p.status === "pool" || p.status === "unsold");
   const valuations = valuePool(
     available.map((p) => ({ id: p.id, name: p.name, pool, basePrice: p.base_price, stats: statsOf(p.id), availableDays: availableDays(p) })),
-    past,
-    { purse: numbers.purse, slots: numbers.slotsMin, maxBid, step, matchDays },
+    m.past,
+    { purse: numbers.purse, slots: numbers.slotsMin, maxBid, step, matchDays: m.matchDays },
   );
   const brief: BriefPlayer[] = available.map((p, i) => ({
     ref: `P${String(i + 1).padStart(2, "0")}`,
@@ -274,89 +325,199 @@ async function poolContext(db: SupabaseClient, pool: Pool) {
     stats: statsOf(p.id),
     valuation: valuations.get(p.id)!,
   }));
-  return { market, brief, rows, matchDays, maxBid, step };
+  return { market, brief, maxBid, step, matchDays: m.matchDays, hasData: brief.some((p) => p.stats || p.valuation.history.length) };
 }
 
-const guideRow = (playerId: string, v: Valuation, now: string) => ({
-  player_id: playerId,
-  tier: v.tier,
-  price_floor: v.floor,
-  price_fair: v.fair,
-  price_stretch: v.stretch,
-  confidence: v.confidence,
-  valuation: v,
-  generated_at: now,
-  model: GUIDE_MODEL,
-});
+/** The AI's adjustment to the guide for a player with a note. */
+function nudgeOf(r: InsightRow): number {
+  if (r.valuation?.nudge) return r.valuation.nudge;
+  // Notes written before the adjustment was kept: work it out from the saved prices.
+  return r.valuation?.fair && r.price_fair ? Math.min(Math.max(r.price_fair / r.valuation.fair, 0.8), 1.2) : 1;
+}
+
+
+/**
+ * Every player's prices and notes, as owners see them. Prices for players
+ * still to be auctioned are worked out now, so they follow the market as
+ * players are sold; players already sold keep what was saved.
+ */
+export async function loadInsights(db: SupabaseClient): Promise<PlayerInsight[]> {
+  if (cached && Date.now() - cached.at < CACHE_MS) return cached.data;
+  const m = await loadMarket(db);
+  const live = new Map<string, { p: BriefPlayer; ctx: PoolContext }>();
+  for (const pool of POOLS) {
+    const ctx = poolContext(m, pool);
+    if (ctx?.hasData) for (const p of ctx.brief) live.set(p.id, { p, ctx });
+  }
+  const out: PlayerInsight[] = [];
+  for (const id of new Set([...m.rows.keys(), ...live.keys()])) {
+    const r = m.rows.get(id);
+    const l = live.get(id);
+    const v = l?.p.valuation;
+    const prices = l
+      ? applyNudge(l.p.valuation, r?.summary ? nudgeOf(r) : 1, l.p.basePrice, l.ctx.maxBid, l.ctx.step)
+      : r?.price_fair != null
+        ? { floor: r.price_floor, fair: r.price_fair, stretch: r.price_stretch }
+        : null;
+    out.push({
+      playerId: id,
+      summary: r?.summary ?? null,
+      strengths: r?.strengths ?? [],
+      concerns: r?.concerns ?? [],
+      roleFit: r?.role_fit ?? null,
+      tier: v?.tier ?? r?.tier ?? null,
+      priceFloor: prices?.floor ?? null,
+      priceFair: prices?.fair ?? null,
+      priceStretch: prices?.stretch ?? null,
+      confidence: v?.confidence ?? r?.confidence ?? null,
+      generatedAt: r?.summary ? r.generated_at : null,
+      hasNote: !!r?.summary,
+      history: (v?.history ?? r?.valuation?.history ?? []).map(historyLine),
+      statLines: hasStats(r?.stats) ? statLines(r.stats) : [],
+      // Only ever link to CricHeroes itself.
+      cricheroesUrl: r?.cricheroes_url && /^https:\/\/(www\.)?cricheroes\.(com|in)\//.test(r.cricheroes_url) ? r.cricheroes_url : null,
+    });
+  }
+  cached = { at: Date.now(), data: out };
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// AI notes, written automatically
+// ---------------------------------------------------------------------------
 
 function friendly(e: unknown): InsightError {
   if (e instanceof InsightError) return e;
   if (e instanceof AiError) return new InsightError(e.status, e.code, e.message, e.retryAfter);
-  console.error("Generating insights failed", e);
-  return new InsightError(500, "internal", "Generating notes failed.");
+  console.error("Writing notes failed", e);
+  return new InsightError(500, "internal", "Writing notes failed.");
 }
 
-export interface BatchResult {
-  /** AI notes written by this call. */
-  generated: number;
-  /** Players still without an AI note. */
+/** A note claimed by another request in the last 2 minutes. */
+const claimedRecently = (r: InsightRow | undefined) => !!r?.note_claimed_at && Date.now() - Date.parse(r.note_claimed_at) < 120_000;
+
+/** How many teams have each player on their wishlist (to write those notes first). */
+async function wishlistCounts(db: SupabaseClient): Promise<Map<string, number>> {
+  const { data } = await db.from("wishlist").select("player_id");
+  const out = new Map<string, number>();
+  for (const r of (data ?? []) as { player_id: string }[]) out.set(r.player_id, (out.get(r.player_id) ?? 0) + 1);
+  return out;
+}
+
+async function releaseClaims(db: SupabaseClient, ids: string[]) {
+  if (ids.length) await db.from("player_insights").update({ note_claimed_at: null }).in("player_id", ids).is("summary", null);
+}
+
+/** Pauses every AI request (a rate limit, or a key that needs fixing). */
+async function pauseAi(db: SupabaseClient, seconds: number) {
+  await db.from("ai_status").update({ blocked_until: new Date(Date.now() + seconds * 1000).toISOString() }).eq("id", 1);
+}
+
+/** Seconds until the AI may be asked again. */
+async function secondsToWait(db: SupabaseClient, gap: number): Promise<number> {
+  const { data } = await db.from("ai_status").select("last_call_at, blocked_until").eq("id", 1).maybeSingle();
+  const until = (t: string | null | undefined) => (t ? Math.ceil((Date.parse(t) - Date.now()) / 1000) : 0);
+  return Math.max(until(data?.blocked_until), data?.last_call_at ? until(data.last_call_at) + gap : 0, 1);
+}
+
+export interface NoteResult {
+  status: "written" | "done" | "busy" | "off";
+  written: number;
+  /** Players still to be auctioned without a note (in pools with data). */
   remaining: number;
-  /** Players in the pool (or unsold). */
-  total: number;
-  /** Players with a price guide. */
-  priced: number;
-  /** False when no AI key is set: prices only. */
-  ai: boolean;
+  /** Seconds before another try makes sense. */
+  wait: number | null;
+}
+
+export interface NoteOptions {
+  /** These players only (on demand); otherwise the most useful ones still pending. */
+  ids?: string[];
+  pool?: Pool;
+  size: number;
+  /** Seconds that must pass since the last AI request (0 = go now). */
+  gap: number;
+  timeoutMs?: number;
 }
 
 /**
- * Recalculates the price guide for every player without an AI note (the
- * market moves as players are sold), then has the AI write notes for the next
- * few of them, if an AI key is set.
+ * Writes AI notes for players still to be auctioned that don't have one.
+ * Players on the block, then those on wishlists, then the dearest go first.
+ * Two requests never write the same note, and nothing is sent while the AI
+ * is paused by a rate limit.
  */
-export async function generateBatch(db: SupabaseClient, pool: Pool, size?: number): Promise<BatchResult> {
-  const ctx = await poolContext(db, pool);
-  const now = new Date().toISOString();
-  const pending = ctx.brief.filter((p) => !ctx.rows.get(p.id)?.summary);
-  if (pending.length) {
-    const { error } = await db.from("player_insights").upsert(
-      pending.map((p) => guideRow(p.id, p.valuation, now)),
-      { onConflict: "player_id" },
-    );
-    if (error) {
-      if (missingColumn(error.code)) throw needsMigration();
-      console.error("Saving the price guide failed", error);
-      throw new InsightError(500, "db_error", "Could not save the prices");
-    }
-  }
-  const total = ctx.brief.length;
-  const provider: Provider | null = aiProvider();
-  if (!provider || !pending.length) return { generated: 0, remaining: pending.length, total, priced: total, ai: !!provider };
+export async function writeNotes(db: SupabaseClient, opts: NoteOptions): Promise<NoteResult> {
+  const provider = aiProvider();
+  if (!provider) return { status: "off", written: 0, remaining: 0, wait: null };
+  const m = await loadMarket(db);
+  const contexts = POOLS.map((p) => poolContext(m, p)).filter((c): c is PoolContext => !!c?.hasData && (!opts.pool || c.market.pool === opts.pool));
+  const pending = contexts.flatMap((ctx) => ctx.brief.filter((p) => !m.rows.get(p.id)?.summary).map((p) => ({ p, ctx })));
+  if (!pending.length) return { status: "done", written: 0, remaining: 0, wait: null };
 
-  const most = batchSizeFor(provider);
-  const batch = pending.slice(0, Math.min(Math.max(Math.floor(size ?? most), 1), most));
-  let reply: { text: string; model: string };
+  let wanted = pending;
+  if (opts.ids) {
+    wanted = pending.filter((x) => opts.ids!.includes(x.p.id));
+    if (!wanted.length) return { status: "done", written: 0, remaining: pending.length, wait: null };
+  } else {
+    const wished = await wishlistCounts(db);
+    wanted = pending
+      .filter((x) => !claimedRecently(m.rows.get(x.p.id)))
+      .sort(
+        (a, b) =>
+          Number(b.p.id === m.onBlock) - Number(a.p.id === m.onBlock) ||
+          (wished.get(b.p.id) ?? 0) - (wished.get(a.p.id) ?? 0) ||
+          b.p.valuation.fair - a.p.valuation.fair,
+      );
+    if (!wanted.length) return { status: "busy", written: 0, remaining: pending.length, wait: 15 };
+  }
+  // One pool per request: the brief describes that pool's market.
+  const ctx = wanted[0].ctx;
+  const batch = wanted.filter((x) => x.ctx === ctx).slice(0, Math.max(opts.size, 1)).map((x) => x.p);
+  const { data: claimed, error } = await db.rpc("claim_insight_notes", { p_players: batch.map((p) => p.id), p_gap_seconds: opts.gap });
+  if (error) {
+    if (missingFunction(error.code) || missingTable(error.code)) throw needsMigration();
+    console.error("Claiming notes failed", error);
+    throw new InsightError(500, "db_error", "Could not start the AI");
+  }
+  const ids = new Set(((claimed ?? []) as unknown[]).map((c) => (typeof c === "string" ? c : String(Object.values(c as object)[0]))));
+  const mine = batch.filter((p) => ids.has(p.id));
+  if (!mine.length) return { status: "busy", written: 0, remaining: pending.length, wait: await secondsToWait(db, opts.gap) };
+
+  let generated: GeneratedInsight[];
+  let model: string;
   try {
-    reply = await completeJson(provider, {
+    const reply = await completeJson(provider, {
       system: SYSTEM_PROMPT,
-      user: batchBrief(ctx.market, batch, ctx.matchDays),
+      user: batchBrief(ctx.market, mine, ctx.matchDays),
       schema: OUTPUT_SCHEMA as unknown as Record<string, unknown>,
+      players: mine.length,
+      timeoutMs: opts.timeoutMs,
     });
+    model = reply.model;
+    try {
+      generated = readAnswer(reply.text, mine, ctx.maxBid, ctx.step);
+    } catch (e) {
+      console.error("Unreadable AI answer", e instanceof Error ? e.message : e);
+      throw new InsightError(502, "ai_unreadable", "The AI's answer couldn't be read. Try again.");
+    }
+    if (!generated.length) throw new InsightError(502, "ai_empty", "The AI didn't return notes for these players. Try again.");
   } catch (e) {
-    throw friendly(e);
+    await releaseClaims(db, mine.map((p) => p.id));
+    const err = friendly(e);
+    const pause =
+      err.code === "ai_rate_limited"
+        ? (err.retryAfter ?? 30)
+        : err.code === "ai_key_rejected" || err.code === "ai_model_missing"
+          ? 600
+          : ["ai_busy", "ai_unreachable", "ai_timeout"].includes(err.code)
+            ? 20
+            : 0;
+    if (pause) await pauseAi(db, pause);
+    throw err;
   }
 
-  let generated;
-  try {
-    generated = readAnswer(reply.text, batch, ctx.maxBid, ctx.step);
-  } catch (e) {
-    console.error("Unreadable AI answer", e instanceof Error ? e.message : e);
-    throw new InsightError(502, "ai_unreadable", "The AI's answer couldn't be read. Try again.");
-  }
-  if (!generated.length) throw new InsightError(502, "ai_empty", "The AI didn't return notes for these players. Try again.");
-
-  const valuation = new Map(batch.map((p) => [p.id, p.valuation]));
-  const { error } = await db.from("player_insights").upsert(
+  const now = new Date().toISOString();
+  const guide = new Map(mine.map((p) => [p.id, p.valuation]));
+  const { error: saveError } = await db.from("player_insights").upsert(
     generated.map((g) => ({
       player_id: g.playerId,
       summary: g.summary,
@@ -368,20 +529,31 @@ export async function generateBatch(db: SupabaseClient, pool: Pool, size?: numbe
       price_fair: g.priceFair,
       price_stretch: g.priceStretch,
       confidence: g.confidence,
-      valuation: valuation.get(g.playerId),
+      valuation: { ...guide.get(g.playerId), nudge: g.nudge },
       generated_at: now,
-      model: reply.model.slice(0, 100),
+      model: model.slice(0, 100),
+      note_claimed_at: null,
     })),
     { onConflict: "player_id" },
   );
-  if (error) {
-    console.error("Saving insights failed", error);
+  const done = new Set(saveError ? [] : generated.map((g) => g.playerId));
+  await releaseClaims(db, mine.filter((p) => !done.has(p.id)).map((p) => p.id));
+  if (saveError) {
+    console.error("Saving notes failed", saveError);
     throw new InsightError(500, "db_error", "Could not save the notes");
   }
-  return { generated: generated.length, remaining: pending.length - generated.length, total, priced: total, ai: true };
+  cached = null;
+  return { status: "written", written: done.size, remaining: pending.length - done.size, wait: null };
 }
 
-/** Clears the notes and prices (not the stats) for a pool, ready to generate again. */
+
+/** The admin's "write the rest now": goes ahead even while the AI is paused. */
+export async function writeNotesNow(db: SupabaseClient, pool: Pool, size: number): Promise<NoteResult> {
+  await db.from("ai_status").update({ blocked_until: null }).eq("id", 1);
+  return writeNotes(db, { pool, size, gap: 0 });
+}
+
+/** Clears the notes (not the stats) for a pool, ready to write again. */
 export async function clearInsights(db: SupabaseClient, pool: Pool): Promise<number> {
   const { data: ids } = await db.from("players").select("id").eq("pool", pool);
   const list = (ids ?? []).map((r) => r.id as string);
@@ -408,35 +580,8 @@ export async function clearInsights(db: SupabaseClient, pool: Pool): Promise<num
     if (missingColumn(error.code)) throw needsMigration();
     throw new InsightError(500, "db_error", "Could not clear the notes");
   }
+  cached = null;
   return data?.length ?? 0;
-}
-
-/** Every player's notes and prices, as owners see them. */
-export async function loadInsights(db: SupabaseClient): Promise<PlayerInsight[]> {
-  const { data, error } = await db.from("player_insights").select("*");
-  if (error) {
-    // Before the migration is run the table doesn't exist: nothing to show.
-    if (missingTable(error.code)) return [];
-    throw new InsightError(500, "db_error", "Could not load the notes");
-  }
-  return (data as InsightRow[]).map((r) => ({
-    playerId: r.player_id,
-    summary: r.summary,
-    strengths: r.strengths ?? [],
-    concerns: r.concerns ?? [],
-    roleFit: r.role_fit,
-    tier: r.tier,
-    priceFloor: r.price_floor,
-    priceFair: r.price_fair,
-    priceStretch: r.price_stretch,
-    confidence: r.confidence,
-    generatedAt: r.generated_at,
-    hasNote: !!r.summary,
-    history: (r.valuation?.history ?? []).map(historyLine),
-    statLines: hasStats(r.stats) ? statLines(r.stats) : [],
-    // Only ever link to CricHeroes itself.
-    cricheroesUrl: r.cricheroes_url && /^https:\/\/(www\.)?cricheroes\.(com|in)\//.test(r.cricheroes_url) ? r.cricheroes_url : null,
-  }));
 }
 
 export interface SeasonPrices {
@@ -451,13 +596,15 @@ export interface AdminStatus {
   provider: Provider | null;
   model: string | null;
   batchSize: number;
-  /** Previous auctions' price lists uploaded so far. */
+  /** Previous auctions' price lists loaded so far. */
   seasons: SeasonPrices[];
+  /** Seconds until the AI is asked again after a rate limit (null = not paused). */
+  pausedFor: number | null;
 }
 
 export async function adminStatus(db: SupabaseClient): Promise<AdminStatus> {
   const provider = aiProvider();
-  const past = await loadPastPrices(db);
+  const [past, status] = await Promise.all([loadPastPrices(db), db.from("ai_status").select("blocked_until").eq("id", 1).maybeSingle()]);
   const averages = seasonAverages(past);
   const groups = new Map<string, SeasonPrices>();
   for (const p of past) {
@@ -468,5 +615,6 @@ export async function adminStatus(db: SupabaseClient): Promise<AdminStatus> {
     groups.set(k, g);
   }
   const seasons = [...groups.values()].sort((a, b) => a.season - b.season || a.pool.localeCompare(b.pool));
-  return { provider, model: modelName(provider), batchSize: batchSizeFor(provider), seasons };
+  const blocked = status.data?.blocked_until ? Math.ceil((Date.parse(status.data.blocked_until) - Date.now()) / 1000) : 0;
+  return { provider, model: modelName(provider), batchSize: batchSizeFor(provider), seasons, pausedFor: blocked > 0 ? blocked : null };
 }

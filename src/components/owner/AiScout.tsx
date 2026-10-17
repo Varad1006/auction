@@ -1,8 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import { cn, money } from "@/lib/format";
 import { TIER_LABEL, type PlayerInsight, type Tier } from "@/lib/insights";
-import { useInsight } from "./InsightsProvider";
+import { useInsight, useInsights } from "./InsightsProvider";
 
 const TIER_STYLE: Record<Tier, string> = {
   marquee: "bg-amber-400 text-amber-950",
@@ -28,14 +29,22 @@ export function AiPriceChip({ playerId, className }: { playerId: string; classNa
   );
 }
 
-/** The suggested price range for one player, with the AI's scouting note if written. */
+/**
+ * The suggested price range for one player, with the AI's scouting note.
+ * Opening a player without a note asks the AI to write one.
+ */
 export function AiScoutCard({ playerId, compact = false, className }: { playerId: string; compact?: boolean; className?: string }) {
   const insight = useInsight(playerId);
+  const { requestNote, writing } = useInsights();
+  const needsNote = !!insight && !insight.hasNote;
+  useEffect(() => {
+    if (needsNote) requestNote(playerId);
+  }, [needsNote, playerId, requestNote]);
   if (!insight) return null;
-  return <ScoutCard insight={insight} compact={compact} className={className} />;
+  return <ScoutCard insight={insight} compact={compact} className={className} writing={writing.has(playerId)} />;
 }
 
-export function ScoutCard({ insight, compact, className }: { insight: PlayerInsight; compact?: boolean; className?: string }) {
+export function ScoutCard({ insight, compact, className, writing }: { insight: PlayerInsight; compact?: boolean; className?: string; writing?: boolean }) {
   return (
     <section className={cn("rounded-xl bg-fuchsia-950/30 p-3 text-sm ring-1 ring-fuchsia-400/25", className)} aria-label={insight.hasNote ? "AI scout" : "Price guide"}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -59,6 +68,7 @@ export function ScoutCard({ insight, compact, className }: { insight: PlayerInsi
       )}
 
       {insight.summary && <p className="mt-2 text-slate-200">{insight.summary}</p>}
+      {writing && <p className="mt-2 animate-pulse text-xs text-fuchsia-200">✨ The AI is writing a note on this player…</p>}
       {!insight.hasNote && !insight.history.length && !insight.statLines.length && (
         <p className="mt-2 text-xs text-slate-400">No previous auction price or stats on record.</p>
       )}

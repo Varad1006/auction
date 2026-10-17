@@ -9,6 +9,7 @@ import { basePriceFor } from "@/lib/rules";
 import { GRADES, PLAYER_ROLES, POOLS, type AuctionState, type Me, type PoolConfig, type Role } from "@/lib/types";
 import { DECLARATION_MAX, FINAL_DECLARATION_MAX, mobileNumber, PAYMENT_QR_MAX, parseUpi, waitlistPositions } from "@/lib/registration";
 import { WISHLIST_MAX } from "@/lib/wishlist";
+import { writeNotes } from "./insights";
 import { isPushEndpoint, notifyWishlist, sendTestPush } from "./push";
 import { REG_BUCKET, registrationQueue, registrationSettings } from "./registration";
 
@@ -130,6 +131,13 @@ function notifyAfter(ctx: Ctx, s: AuctionState, delayMs: number) {
     if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
     await notifyWishlist(ctx.db, playerId, ctx.origin).catch((e) => console.error("Wishlist notification failed", e));
   });
+  // The AI note for the player, ready (usually) by the time the wheel stops.
+  after(() =>
+    writeNotes(ctx.db, { ids: [playerId], size: 1, gap: 0, timeoutMs: 20_000 }).then(
+      () => undefined,
+      (e) => console.error("AI note for the player on the block failed", e instanceof Error ? e.message : e),
+    ),
+  );
 }
 
 const WISHLIST_COLS = "player_id, priority, max_price, note, created_at, updated_at";

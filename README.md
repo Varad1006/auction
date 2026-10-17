@@ -114,16 +114,17 @@ playing owners first. Writing a playing owner's name there too (e.g.
 "Arjun Rao (co-owner)") changes how it shows instead of listing it twice,
 and Settings warns when a name is another team's playing owner.
 
-### Price guide and AI scouting notes
+### Price guide, AI notes and AI suggestions
 
-**Admin → ✨ AI insights** gives every player a suggested price range (floor /
-fair / stretch) and, with an AI key, a short scouting note. Team owners and
-admins see them: on player cards, in the *Price guide* / *AI scout* box when
-a card is opened, on the owner dashboard (with one-tap "set my max to the
-suggested price"), and in the owner bar when a player comes up. The public
+Team owners and admins get a suggested price range (floor / fair / stretch)
+for every player, a short AI scouting note, and an **AI suggestions** panel
+for their own team. They appear on player cards, on the owner dashboard (with
+one-tap "set my max to the suggested price"), in the owner bar when a player
+comes up, on the **Live** screen and on the owners' **✨ AI** tab. The public
 site and the projector never show them.
 
-The prices are worked out by the app itself, not guessed by the AI:
+The prices are worked out by the app itself, not guessed by the AI, and they
+follow the market as players are sold:
 
 - what each player sold for in previous PPL auctions, compared with that
   season's average (purses change from year to year), the latest season
@@ -136,28 +137,38 @@ The prices are worked out by the app itself, not guessed by the AI:
   team can bid.
 
 The AI (free on Groq, or Claude) writes the note and may move the fair price
-by up to 20% when the data gives a reason. Without an AI key you still get
-the prices.
+by up to 20% when the data gives a reason. Notes are written automatically:
+when an owner opens or stars a player, when a player comes up on the wheel,
+and a few at a time in the background while any owner's or admin's app is
+open, wishlisted players first. Requests from every device share one pace (a
+few a minute on Groq's free tier) and pause by themselves when the free
+limit is reached. Without an AI key you still get the prices.
+
+The **AI suggestions** panel is worked out on each owner's phone from the
+live auction, the price guide and their private wishlist:
+
+- **Live bid advice** for the player on the block: how far to go (the
+  owner's own wishlist max if set; otherwise the guide's stretch, fair or low
+  price by priority and squad need, kept affordable for the places still to
+  fill), with the reasons.
+- **Squad check**: places left, money per place, roles (playing owners and
+  the star included) and gaps: a keeper, enough bowling and batting options.
+- **Rival watch**: who can still bid on the player, who needs one like them
+  and who can go past your limit; between players, every rival's purse,
+  max bid and places.
+
+Setting it up:
 
 1. Optional, for the notes: create a free key at console.groq.com → API Keys,
    add it as `GROQ_API_KEY` in Vercel (Settings → Environment Variables) and
    redeploy. (`ANTHROPIC_API_KEY` uses Claude instead; with both set, Groq is
    used unless `AI_PROVIDER=anthropic`.)
-2. Upload the stats export: the zip with `all_players.json` (CricHeroes
-   career stats per auction player) and the `pplN_{batting,bowling,fielding,mvp}_leaderboard.csv`
-   files. Players are matched by id, then by name; the page lists anyone it
-   couldn't match.
-3. Upload each previous season's tracker sheet (Google Sheets → File →
-   Download → Microsoft Excel, or the players tab as .csv) and pick its
-   season. Only name, gender, team and sold price are read; phone numbers,
-   emails and other columns are ignored and never stored.
-4. Press **Generate** (or **Calculate prices** without an AI key) for each
-   pool and keep the page open until it's done. On Groq's free tier it pauses
-   when the per-minute limit is reached and carries on by itself. **Start
-   over** works everything out again (e.g. after changing purses or
-   uploading new data).
+2. Load the previous seasons' data once, either on **Admin → ✨ AI insights**
+   (the stats export zip and each season's tracker sheet as .xlsx or .csv;
+   only name, gender, team and sold price are read from the sheets) or with a
+   SQL file run in Supabase. Nothing needs pressing afterwards; the admin page
+   shows progress and can write the remaining notes at once.
 
-Prices and notes are stored, so the auction itself never waits on the AI.
 Player-written registration notes are passed to the AI as information only.
 
 ## Setup (one time)
@@ -337,8 +348,8 @@ bash scripts/e2e-users.sh # local test users: admin/owner1/owner2/stranger@test.
 npm run test:e2e          # drives admin + 2 owners + a viewer in real browsers
 # The AI test uses a fake Groq/Anthropic API on port 4545: start the app with
 #   PUSH_ALLOW_LOCALHOST=1 GROQ_API_KEY=test-groq-key GROQ_BASE_URL=http://127.0.0.1:4545/openai/v1 AI_TIMEOUT_MS=5000
-# (or ANTHROPIC_API_KEY=test-key ANTHROPIC_BASE_URL=http://127.0.0.1:4545, or no
-# key at all for prices only); it adapts to whichever the app runs with.
+# plus AI_BACKGROUND_GAP_S=1 (or ANTHROPIC_API_KEY=test-key ANTHROPIC_BASE_URL=http://127.0.0.1:4545,
+# or no key at all for prices only); it adapts to whichever the app runs with.
 ```
 
 To also emulate hosted Supabase's `safeupdate` guard (no `UPDATE`/`DELETE`

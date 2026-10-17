@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { batchBrief, extractJson, marketNumbers, readAnswer, retryAfterSeconds, statLines, type BriefPlayer, type Market } from "@/lib/insights";
+import { applyNudge, batchBrief, extractJson, marketNumbers, readAnswer, retryAfterSeconds, statLines, type BriefPlayer, type Market } from "@/lib/insights";
 import { matchPlayers, nameKey, parseStatsFiles } from "@/lib/stats-import";
 import type { Valuation } from "@/lib/valuation";
 
@@ -172,17 +172,24 @@ describe("AI brief and answer", () => {
     const out = readAnswer(JSON.stringify(answer), batch, 165000, 500);
     expect(out).toEqual([
       // 30,000 asked for: 12,000 + 20% = 14,400, on the 500 step; floor and stretch move with it.
-      { playerId: "id-1", summary: "Big hitter.", strengths: ["Sixes", "Death bowling", "Fielding"], concerns: [], roleFit: "Finisher", tier: "premium", priceFloor: 11000, priceFair: 14500, priceStretch: 18500, confidence: "high" },
+      { playerId: "id-1", summary: "Big hitter.", strengths: ["Sixes", "Death bowling", "Fielding"], concerns: [], roleFit: "Finisher", tier: "premium", priceFloor: 11000, priceFair: 14500, priceStretch: 18500, confidence: "high", nudge: 1.2 },
       // Never below base price.
-      { playerId: "id-2", summary: "Unknown.", strengths: [], concerns: ["No data"], roleFit: "Squad bowler", tier: "unknown", priceFloor: 4000, priceFair: 4000, priceStretch: 5000, confidence: "low" },
+      { playerId: "id-2", summary: "Unknown.", strengths: [], concerns: ["No data"], roleFit: "Squad bowler", tier: "unknown", priceFloor: 4000, priceFair: 4000, priceStretch: 5000, confidence: "low", nudge: 1.025 },
     ]);
     // No price from the AI: the guide's own.
     const plain = readAnswer(JSON.stringify({ players: [{ ref: "P01", summary: "Fine." }] }), batch, 165000, 500)[0];
     expect(plain).toMatchObject({ priceFloor: 9000, priceFair: 12000, priceStretch: 15500, strengths: [], roleFit: "" });
     // Never above what a team can bid.
-    expect(readAnswer(JSON.stringify(answer), batch, 13000, 500)[0]).toMatchObject({ priceFloor: 10000, priceFair: 13000, priceStretch: 13000 });
+    expect(readAnswer(JSON.stringify(answer), batch, 13000, 500)[0]).toMatchObject({ priceFloor: 11000, priceFair: 13000, priceStretch: 13000 });
     expect(() => readAnswer("not json", batch, 165000, 500)).toThrow();
     expect(() => readAnswer(JSON.stringify({ players: [{ ref: "P01" }] }), batch, 165000, 500)).toThrow();
+  });
+
+  it("re-applies the AI's adjustment to a guide that has moved with the market", () => {
+    expect(applyNudge({ floor: 9000, fair: 12000, stretch: 15500 }, 1.2, 4000, 165000, 500)).toEqual({ floor: 11000, fair: 14500, stretch: 18500 });
+    // Purses shrank: the same adjustment on a lower guide, still on the step and within base price and max bid.
+    expect(applyNudge({ floor: 3000, fair: 4000, stretch: 5000 }, 0.8, 3500, 4500, 500)).toEqual({ floor: 3500, fair: 3500, stretch: 4000 });
+    expect(applyNudge({ floor: 9000, fair: 12000, stretch: 15500 }, 1, 4000, 10000, 500)).toEqual({ floor: 9000, fair: 10000, stretch: 10000 });
   });
 
   it("finds the JSON in replies with reasoning or code fences around it", () => {

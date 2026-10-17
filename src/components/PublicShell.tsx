@@ -21,7 +21,10 @@ const TABS = [
   { href: "/bids", label: "Results" },
 ];
 
-const OWNER_TAB = { href: "/wishlist", label: "★ My team" };
+const OWNER_TABS = [
+  { href: "/wishlist", label: "★ My team" },
+  { href: "/ai", label: "✨ AI" },
+];
 
 /** Header, page tabs and (for owners) the wishlist bar, shared by every public page. */
 export function PublicShell({ children }: { children: React.ReactNode }) {
@@ -41,7 +44,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   const ownerTeam = wishlist.enabled ? wishlist.teamId : null;
   const liveNow = state?.phase === "bidding" || state?.phase === "spinning" || state?.phase === "revealed";
 
-  const tabs = ownerTeam || me?.role === "admin" ? [...TABS.slice(0, 2), OWNER_TAB, ...TABS.slice(2)] : TABS;
+  const tabs = ownerTeam || me?.role === "admin" ? [...TABS.slice(0, 2), ...OWNER_TABS, ...TABS.slice(2)] : TABS;
 
   return (
     <>

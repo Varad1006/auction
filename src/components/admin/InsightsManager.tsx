@@ -28,12 +28,11 @@ interface PriceReport {
   available: number;
 }
 
-interface BatchResult {
-  generated: number;
+interface NoteResult {
+  status: "written" | "done" | "busy" | "off";
+  written: number;
   remaining: number;
-  total: number;
-  priced: number;
-  ai: boolean;
+  wait: number | null;
 }
 
 class RequestError extends Error {
@@ -76,21 +75,21 @@ const SEASONS = [1, 2, 3, 4, 5, 6, 7, 8];
 
 function AiStatus({ admin }: { admin: AdminInfo | null }) {
   if (!admin) return null;
-  if (admin.provider === "groq") {
+  if (admin.provider) {
     return (
-      <p className="mb-3 text-sm text-slate-400">
-        AI: <b className="text-slate-200">Groq · {admin.model}</b> (free). It writes a short note for each player and may adjust the price guide a
-        little. It works {admin.batchSize} players at a time; when Groq&apos;s free per-minute limit is reached it waits and carries on by itself, so
-        keep this page open until it finishes.
-      </p>
-    );
-  }
-  if (admin.provider === "anthropic") {
-    return (
-      <p className="mb-3 text-sm text-slate-400">
-        AI: <b className="text-slate-200">Claude · {admin.model}</b>. It writes a short note for each player and may adjust the price guide a little.
-        It works a few players at a time; keep this page open until it finishes.
-      </p>
+      <div className="mb-3 space-y-1 text-sm text-slate-400">
+        <p>
+          AI: <b className="text-slate-200">{admin.provider === "groq" ? "Groq" : "Claude"} · {admin.model}</b>
+          {admin.provider === "groq" && " (free)"}. Notes are written automatically: when an owner opens or stars a player, when a player comes up,
+          and a few at a time in the background while anyone&apos;s app is open. Nothing needs pressing; the button below just writes the rest now.
+        </p>
+        {admin.pausedFor !== null && (
+          <p className="text-amber-200" role="status">
+            {admin.provider === "groq" ? "Groq's free limit is reached" : "The AI is paused"}: it carries on in about {Math.ceil(admin.pausedFor / 60)}{" "}
+            minute(s).
+          </p>
+        )}
+      </div>
     );
   }
   return (
@@ -126,7 +125,7 @@ export function InsightsManager() {
     return {
       total: list.length,
       withStats: list.filter((i) => (i?.statLines.length ?? 0) > 0).length,
-      priced: list.filter((i) => i?.generatedAt && i.priceFair !== null).length,
+      priced: list.filter((i) => i && i.priceFair !== null).length,
       notes: list.filter((i) => i?.hasNote).length,
     };
   };
@@ -189,7 +188,7 @@ export function InsightsManager() {
     try {
       for (;;) {
         if (stopRef.current) throw new Stopped();
-        let result: BatchResult;
+        let result: NoteResult;
         try {
           result = await post("/api/admin/insights/generate", JSON.stringify({ pool, restart: restart && first, size }));
         } catch (e) {
@@ -215,14 +214,16 @@ export function InsightsManager() {
         }
         first = false;
         retried = false;
-        await reload();
-        if (!result.ai) {
-          toast(`${POOL_LABEL[pool]}: prices worked out for ${result.priced} players`, "success");
-          break;
-        }
-        if (result.remaining <= 0 || result.generated === 0) {
+        if (result.written) await reload();
+        if (result.status === "off" || result.status === "done" || result.remaining <= 0) {
+          await reload();
           toast(`${POOL_LABEL[pool]}: AI notes ready`, "success");
           break;
+        }
+        // Other devices are writing the next ones: give them a moment.
+        if (!result.written) {
+          if (++waits > 60) throw new Error("The AI is busy with other requests.");
+          await countdown(Math.min(result.wait ?? 10, MAX_WAIT));
         }
       }
     } catch (e) {
@@ -329,8 +330,7 @@ export function InsightsManager() {
             </p>
             <p className="text-slate-400">
               Found {priceReport.matched} of this year&apos;s {priceReport.available} auction players in it. Press{" "}
-              {ai ? "Generate" : "Calculate prices"} below to update the prices
-              {anyNotes && " (players who already have AI notes keep theirs until you press Start over)"}.
+              Prices update by themselves{anyNotes && "; AI notes already written stay until you press Start over"}.
             </p>
           </div>
         )}
@@ -349,14 +349,16 @@ export function InsightsManager() {
       <Card title={ai ? "3. Prices and AI notes" : "3. Prices"}>
         <AiStatus admin={admin} />
         <p className="mb-3 text-xs text-slate-500">
-          Prices come from what each player went for before (against that season&apos;s average), their stats and availability, scaled so the pool
-          adds up to what the teams have left. Owners see them on player cards and their dashboard; nobody else does.
+          Prices are worked out automatically from what each player went for before (against that season&apos;s average), their stats and
+          availability, scaled so the pool adds up to what the teams have left, and they follow the market as players are sold. Owners see them on
+          player cards, their dashboard and the AI tab; nobody else does.
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           {POOLS.map((pool) => {
             const c = counts(pool);
             const done = ai ? c.notes : c.priced;
-            const pct = c.total ? Math.round((done / c.total) * 100) : 0;
+            const of = ai ? c.priced : c.total;
+            const pct = of ? Math.round((done / of) * 100) : 0;
             return (
               <div key={pool} className="rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/10">
                 <div className="flex items-center justify-between gap-2">
@@ -370,46 +372,39 @@ export function InsightsManager() {
                 </div>
                 {running === pool && wait !== null && (
                   <p className="mt-2 text-xs text-amber-200" role="status">
-                    Free limit reached: carrying on in {wait}s…
+                    Waiting for the AI: carrying on in {wait}s…
                   </p>
                 )}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {ai ? (
+                {ai && (
+                  <div className="mt-3 flex flex-wrap gap-2">
                     <Button
                       size="sm"
                       variant="primary"
                       busy={running === pool}
-                      disabled={running !== null || c.total === 0 || c.notes === c.total}
+                      disabled={running !== null || c.priced === 0 || c.notes >= c.priced}
                       onClick={() => void generate(pool, false)}
                     >
-                      {c.notes === 0 ? "Generate" : c.notes === c.total ? "All done" : `Generate remaining ${c.total - c.notes}`}
+                      {c.priced === 0 ? "No data yet" : c.notes >= c.priced ? "All done" : `Write remaining ${c.priced - c.notes} now`}
                     </Button>
-                  ) : (
-                    <Button size="sm" variant="primary" busy={running === pool} disabled={running !== null || c.total === 0} onClick={() => void generate(pool, false)}>
-                      {c.priced ? "Recalculate prices" : "Calculate prices"}
-                    </Button>
-                  )}
-                  {running === pool && (
-                    <Button size="sm" variant="ghost" onClick={() => (stopRef.current = true)}>
-                      Stop
-                    </Button>
-                  )}
-                  {running === null && (c.notes > 0 || c.priced > 0) && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        confirm(
-                          ai
-                            ? `Write fresh AI notes and prices for all ${c.total} ${POOL_LABEL[pool].toLowerCase()} players? The current ones are replaced.`
-                            : `Work out fresh prices for all ${c.total} ${POOL_LABEL[pool].toLowerCase()} players?`,
-                        ) && void generate(pool, true)
-                      }
-                    >
-                      Start over
-                    </Button>
-                  )}
-                </div>
+                    {running === pool && (
+                      <Button size="sm" variant="ghost" onClick={() => (stopRef.current = true)}>
+                        Stop
+                      </Button>
+                    )}
+                    {running === null && c.notes > 0 && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          confirm(`Write fresh AI notes for all ${c.priced} ${POOL_LABEL[pool].toLowerCase()} players? The current ones are replaced.`) &&
+                          void generate(pool, true)
+                        }
+                      >
+                        Start over
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -452,12 +447,12 @@ export function InsightsManager() {
                     <span className="block truncate text-xs text-slate-400">
                       {player.role} · base {money(player.base_price)}
                       {insight?.tier && ` · ${TIER_LABEL[insight.tier]}`}
-                      {insight?.generatedAt && (insight.hasNote ? " · ✨ AI note" : " · 📊 guide")}
+                      {insight && (insight.hasNote ? " · ✨ AI note" : insight.priceFair !== null ? " · 📊 guide" : "")}
                       {insight && !insight.statLines.length && " · no stats"}
                     </span>
                   </span>
                   <span className="shrink-0 text-right text-sm tabular-nums">
-                    {insight?.generatedAt && insight.priceFair !== null ? (
+                    {insight && insight.priceFair !== null ? (
                       <>
                         <b>{money(insight.priceFair)}</b>
                         <span className="block text-[11px] text-slate-400">
@@ -469,7 +464,7 @@ export function InsightsManager() {
                     )}
                   </span>
                 </button>
-                {open === player.id && insight?.generatedAt && <ScoutCard insight={insight} className="mt-2" />}
+                {open === player.id && insight && (insight.hasNote || insight.priceFair !== null) && <ScoutCard insight={insight} className="mt-2" />}
               </li>
             ))}
           </ul>

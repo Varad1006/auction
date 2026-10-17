@@ -30,6 +30,7 @@ export interface PlayerInsight {
   priceFair: number | null;
   priceStretch: number | null;
   confidence: Confidence | null;
+  /** When the AI wrote the note (null for the price guide alone). */
   generatedAt: string | null;
   /** True when the AI wrote a note; otherwise only the calculated price guide. */
   hasNote: boolean;
@@ -269,6 +270,19 @@ export interface GeneratedInsight {
   priceFair: number;
   priceStretch: number;
   confidence: Confidence;
+  /** The AI's fair price over the guide's (0.8-1.2), kept to re-apply as the market moves. */
+  nudge: number;
+}
+
+/**
+ * Prices from the guide with the AI's adjustment, on the price step, never
+ * below base price or above the most a team can bid.
+ */
+export function applyNudge(v: Pick<Valuation, "floor" | "fair" | "stretch">, nudge: number, basePrice: number, maxBid: number, step: number) {
+  const cap = Math.max(maxBid, basePrice);
+  const fit = (n: number) => Math.min(Math.max(Math.round(n / step) * step, basePrice), cap);
+  const fair = fit(v.fair * nudge);
+  return { floor: Math.min(fit(v.floor * nudge), fair), fair, stretch: Math.max(fit(v.stretch * nudge), fair) };
 }
 
 const clip = (s: string, max: number) => {
@@ -311,13 +325,9 @@ export function readAnswer(raw: string, batch: BriefPlayer[], maxBid: number, st
     if (!p || seen.has(p.id) || !a.summary.trim()) continue;
     seen.add(p.id);
     const v = p.valuation;
-    const cap = Math.max(maxBid, p.basePrice);
-    const fit = (n: number) => Math.min(Math.max(Math.round(n / step) * step, p.basePrice), cap);
     const wanted = Number.isFinite(a.price_fair) && a.price_fair! > 0 ? a.price_fair! : v.fair;
-    const fair = fit(Math.min(Math.max(wanted, v.fair * 0.8), v.fair * 1.2));
-    const scale = v.fair > 0 ? fair / v.fair : 1;
-    const floor = Math.min(fit(v.floor * scale), fair);
-    const stretch = Math.max(fit(v.stretch * scale), fair);
+    const nudge = v.fair > 0 ? Math.round((Math.min(Math.max(wanted, v.fair * 0.8), v.fair * 1.2) / v.fair) * 1000) / 1000 : 1;
+    const { floor, fair, stretch } = applyNudge(v, nudge, p.basePrice, maxBid, step);
     out.push({
       playerId: p.id,
       summary: clip(a.summary, 600),
@@ -329,6 +339,7 @@ export function readAnswer(raw: string, batch: BriefPlayer[], maxBid: number, st
       priceFair: fair,
       priceStretch: stretch,
       confidence: v.confidence,
+      nudge,
     });
   }
   return out;

@@ -6,6 +6,7 @@ import { syncPush } from "@/lib/push-client";
 import type { Priority, WishlistEntry } from "@/lib/wishlist";
 import { useMe } from "../MeProvider";
 import { useToast } from "../Toast";
+import { useInsights } from "./InsightsProvider";
 
 interface WishlistValue {
   /** True for signed-in owners and admins previewing a team; everyone else gets an empty, inert list. */
@@ -97,6 +98,8 @@ function patchEntry(e: WishlistEntry, patch: { priority?: Priority; maxPrice?: n
 export function WishlistProvider({ children }: { children: React.ReactNode }) {
   const { me } = useMe();
   const toast = useToast();
+  // Starring a player asks the AI for its note, if it hasn't written one yet.
+  const { requestNote } = useInsights();
   const enabled = me?.role === "owner" && !!me.teamId;
   const [data, setData] = useState<WishlistData | null>(null);
   const [previewTeam, setPreviewTeamState] = useState<string | null>(() => readStored<string | null>(PREVIEW_TEAM, null));
@@ -152,6 +155,7 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
         });
       const add = async (playerId: string, priority: Priority = 2) => {
         const now = new Date().toISOString();
+        requestNote(playerId);
         save((list) =>
           list.some((e) => e.player_id === playerId)
             ? list
@@ -184,6 +188,7 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
     const add = async (playerId: string, priority: Priority = 2) => {
       if (byPlayer.has(playerId)) return;
       const now = new Date().toISOString();
+      requestNote(playerId);
       patchLocal((list) => [...list, { player_id: playerId, priority, max_price: null, note: null, created_at: now, updated_at: now }]);
       try {
         const row = (await callAction("wishlist.add", { playerId, priority })) as WishlistEntry;
@@ -223,7 +228,7 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
       remove,
       toggle: (playerId) => (byPlayer.has(playerId) ? remove(playerId) : add(playerId)),
     };
-  }, [enabled, data, me?.teamId, fail, previewing, previewTeam, practice, canPreview, setPreviewTeam]);
+  }, [enabled, data, me?.teamId, fail, previewing, previewTeam, practice, canPreview, setPreviewTeam, requestNote]);
 
   return <WishlistContext.Provider value={value}>{children}</WishlistContext.Provider>;
 }

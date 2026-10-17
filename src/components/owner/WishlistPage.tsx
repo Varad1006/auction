@@ -11,7 +11,6 @@ import {
   nextSpinChance,
   PRIORITIES,
   PRIORITY_LABEL,
-  rivalsFor,
   splitWishlist,
   squadGaps,
   squadRoles,
@@ -28,6 +27,7 @@ import { useMe } from "../MeProvider";
 import { inputClass } from "../ui";
 import { PushToggle } from "../PushToggle";
 import { AiPriceChip, AiScoutCard } from "./AiScout";
+import { AiSuggestions } from "./AiSuggestions";
 import { useInsight } from "./InsightsProvider";
 import { useWishlist } from "./WishlistProvider";
 import { WishlistStar } from "./WishlistStar";
@@ -80,7 +80,7 @@ export function WishlistPage() {
 }
 
 /** Lets an admin open the owner screens as a team. */
-function PreviewPicker() {
+export function PreviewPicker() {
   const { teams } = useAuction();
   const { setPreviewTeam } = useWishlist();
   return (
@@ -165,6 +165,8 @@ function OwnerWishlist({ teamId }: { teamId: string }) {
       />
 
       {revealedId && playerById.get(revealedId) && <BlockIntel player={playerById.get(revealedId)!} teamId={teamId} />}
+
+      <AiSuggestions teamId={teamId} pool={pool} showScout={false} />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <div className="space-y-5">
@@ -258,9 +260,9 @@ function OwnerWishlist({ teamId }: { teamId: string }) {
   );
 }
 
-/** Intel on the player on the block: your limits and who can still bid. */
+/** The player on the block with your limits (the AI suggestions below say how far to go and who can compete). */
 function BlockIntel({ player, teamId }: { player: Player; teamId: string }) {
-  const { state, configs, teams, teamById, players, summaries } = useAuction();
+  const { state, configs, teamById, players, summaries } = useAuction();
   const { byPlayer } = useWishlist();
   const config = configs[player.pool];
   if (!state || !config) return null;
@@ -271,8 +273,6 @@ function BlockIntel({ player, teamId }: { player: Player; teamId: string }) {
   const leader = state.leading_team_id ? teamById.get(state.leading_team_id) : null;
   const leading = state.leading_team_id === teamId;
   const next = minNextBid(state, player, config);
-  const rivals = rivalsFor(player, state, config, teams, sums, players, teamId);
-  const priced = teams.length - 1 - rivals.length - (leader && !leading ? 1 : 0);
   const roleMarket = marketStats(players, player.pool).byRole.find((r) => r.role === player.role);
   const over = entry?.max_price != null && state.current_bid !== null && state.current_bid > entry.max_price && !leading;
   const canAfford = mine ? mine.maxBid >= next : false;
@@ -334,28 +334,6 @@ function BlockIntel({ player, teamId }: { player: Player; teamId: string }) {
 
       <AiScoutCard playerId={player.id} compact className="mt-4" />
 
-      <div className="mt-4">
-        <p className="mb-1.5 text-xs font-bold uppercase tracking-widest text-slate-500">
-          Rivals who can still bid {money(next)}+ · {rivals.length}
-        </p>
-        {rivals.length === 0 ? (
-          <p className="text-sm text-slate-400">No other team can go higher right now.</p>
-        ) : (
-          <ul className="flex flex-wrap gap-2">
-            {rivals.map((r) => (
-              <li key={r.team.id} className="flex items-center gap-2 rounded-lg bg-slate-950/60 px-2.5 py-1.5 text-sm">
-                <span className="h-2.5 w-2.5 rounded-full" style={{ background: r.team.color }} />
-                <span className="max-w-[9rem] truncate font-semibold">{r.team.name}</span>
-                <span className="tabular-nums text-slate-300">up to {money(r.maxBid)}</span>
-                {r.needsRole && (
-                  <span className="rounded bg-rose-500/20 px-1.5 text-[11px] font-semibold text-rose-200">needs a {player.role.toLowerCase()}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-        {priced > 0 && <p className="mt-1.5 text-xs text-slate-500">{priced} other team(s) can&apos;t afford the next bid.</p>}
-      </div>
     </section>
   );
 }
