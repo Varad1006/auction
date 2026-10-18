@@ -124,7 +124,7 @@ export function InsightsManager() {
     const list = available(pool).map((p) => byPlayer.get(p.id));
     return {
       total: list.length,
-      withStats: list.filter((i) => (i?.statLines.length ?? 0) > 0).length,
+      withStats: list.filter((i) => i && (i.statLines.length > 0 || i.cricheroes.length > 0)).length,
       priced: list.filter((i) => i && i.priceFair !== null).length,
       notes: list.filter((i) => i?.hasNote).length,
     };
@@ -448,7 +448,7 @@ export function InsightsManager() {
                       {player.role} · base {money(player.base_price)}
                       {insight?.tier && ` · ${TIER_LABEL[insight.tier]}`}
                       {insight && (insight.hasNote ? " · ✨ AI note" : insight.priceFair !== null ? " · 📊 guide" : "")}
-                      {insight && !insight.statLines.length && " · no stats"}
+                      {insight && !insight.statLines.length && !insight.cricheroes.length && " · no stats"}
                     </span>
                   </span>
                   <span className="shrink-0 text-right text-sm tabular-nums">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyNudge, batchBrief, extractJson, marketNumbers, readAnswer, retryAfterSeconds, statLines, type BriefPlayer, type Market } from "@/lib/insights";
+import { applyNudge, batchBrief, cricheroesCareers, cricheroesShort, extractJson, marketNumbers, readAnswer, retryAfterSeconds, statLines, type BriefPlayer, type Market } from "@/lib/insights";
 import { matchPlayers, nameKey, parseStatsFiles } from "@/lib/stats-import";
 import type { Valuation } from "@/lib/valuation";
 
@@ -108,8 +108,24 @@ describe("stats import", () => {
     expect(statLines(arjun.stats)).toEqual([
       "PPL 2 · P2 Indians: 210 runs in 8 inns (SR 190.9, 18 sixes), 4 wkts in 6 ov (econ 8), MVP #1 of 2",
       "PPL 1 · P2 Royals: 150 runs in 7 inns (SR 180, 12 sixes)",
-      "CricHeroes career (tennis ball): 20 matches, 450 runs (avg 28.1, SR 165, best 70*)",
     ]);
+  });
+
+  it("gives the CricHeroes careers: tennis ball, and all matches when that covers more", () => {
+    const careers = cricheroesCareers(arjun.stats);
+    expect(careers).toEqual([
+      { label: "Tennis ball", matches: 20, batting: { runs: 450, average: 28.13, strikeRate: 165, highest: "70*", fifties: 2, sixes: 33 }, bowling: null, fielding: null },
+      {
+        label: "All matches",
+        matches: 40,
+        batting: { runs: 900, average: 27.27, strikeRate: 171.1, highest: "88*", fifties: 3, sixes: 70 },
+        bowling: { wickets: 25, overs: 45.2, economy: 7.06, best: "4/10" },
+        fielding: { catches: 15, runOuts: 3, stumpings: null },
+      },
+    ]);
+    expect(cricheroesShort(careers[1])).toBe("40 matches · 900 runs (SR 171.1) · 25 wkts (econ 7.1)");
+    expect(cricheroesCareers({ cricheroesId: null, career: {}, seasons: [] })).toEqual([]);
+    expect(cricheroesCareers(null)).toEqual([]);
   });
 });
 

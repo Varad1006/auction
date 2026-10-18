@@ -30,7 +30,7 @@ const entry = (over: Partial<WishlistEntry> = {}): WishlistEntry => ({
 const insight = (over: Partial<PlayerInsight> = {}): PlayerInsight => ({
   playerId: "k", summary: "Safe hands.", strengths: [], concerns: [], roleFit: null, tier: "premium",
   priceFloor: 150, priceFair: 200, priceStretch: 260, confidence: "high", generatedAt: "2026-10-01", hasNote: true,
-  history: ["Sold for 9,000 in PPL 2 (1.2× that season's average)"], statLines: [], cricheroesUrl: null, ...over,
+  history: ["Sold for 9,000 in PPL 2 (1.2× that season's average)"], statLines: [], cricheroes: [], cricheroesUrl: null, ...over,
 });
 const team = (id: string): Team => ({ id, name: id.toUpperCase(), short_name: id, color: "#000000", sort_order: 0, created_at: "" });
 const teams = [team("t1"), team("t2"), team("t3")];

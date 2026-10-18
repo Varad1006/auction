@@ -36,8 +36,10 @@ export interface PlayerInsight {
   hasNote: boolean;
   /** Previous auction prices ("Sold for 17,000 in PPL 2 …"). */
   history: string[];
-  /** Short stat lines ("PPL 2 · P2 Royals: 177 runs …"). */
+  /** Short PPL season lines ("PPL 2 · P2 Royals: 177 runs …"). */
   statLines: string[];
+  /** CricHeroes career numbers: tennis ball, and all matches when that covers more. */
+  cricheroes: CricHeroesCareer[];
   cricheroesUrl: string | null;
 }
 
@@ -70,14 +72,48 @@ export function careerLine(label: string, c: CareerTable | undefined): string | 
   return parts.length ? `${label}: ${parts.join(", ")}` : null;
 }
 
+/** One line per PPL season, latest first (CricHeroes careers are shown separately). */
 export function statLines(stats: PlayerStats | null | undefined): string[] {
   if (!stats) return [];
-  const lines = [...stats.seasons].sort((a, b) => b.season - a.season).map(seasonLine);
-  const tennis = careerLine("CricHeroes career (tennis ball)", stats.career?.tennis);
-  const overall = careerLine("CricHeroes career (all)", stats.career?.overall);
-  if (tennis) lines.push(tennis);
-  else if (overall) lines.push(overall);
-  return lines;
+  return [...stats.seasons].sort((a, b) => b.season - a.season).map(seasonLine);
+}
+
+export interface CricHeroesCareer {
+  label: "Tennis ball" | "All matches";
+  matches: number;
+  batting: { runs: Num; average: Num; strikeRate: Num; highest: string | null; fifties: Num; sixes: Num } | null;
+  bowling: { wickets: Num; overs: Num; economy: Num; best: string | null } | null;
+  fielding: { catches: Num; runOuts: Num; stumpings: Num } | null;
+}
+
+function career(label: CricHeroesCareer["label"], c: CareerTable | undefined): CricHeroesCareer | null {
+  const matches = c?.batting?.matches ?? c?.bowling?.matches ?? c?.fielding?.matches ?? null;
+  if (!c || !matches) return null;
+  const b = c.batting;
+  const w = c.bowling;
+  const f = c.fielding;
+  return {
+    label,
+    matches,
+    batting: b && has(b.runs) ? { runs: b.runs, average: b.average, strikeRate: b.strikeRate, highest: b.highest, fifties: b.fifties, sixes: b.sixes } : null,
+    bowling: w && (has(w.wickets) || has(w.overs)) ? { wickets: w.wickets, overs: w.overs, economy: w.economy, best: w.best } : null,
+    fielding: f && (has(f.catches) || has(f.runOuts) || has(f.stumpings)) ? { catches: f.catches, runOuts: f.runOuts, stumpings: f.stumpings } : null,
+  };
+}
+
+/** The player's CricHeroes careers: tennis ball first, all matches too when it covers more games. */
+export function cricheroesCareers(stats: PlayerStats | null | undefined): CricHeroesCareer[] {
+  const tennis = career("Tennis ball", stats?.career?.tennis);
+  const overall = career("All matches", stats?.career?.overall);
+  return [tennis, overall && (!tennis || overall.matches > tennis.matches) ? overall : null].filter((c): c is CricHeroesCareer => !!c);
+}
+
+/** "66 matches · 1,033 runs (SR 161.2) · 29 wkts (econ 6.7)" */
+export function cricheroesShort(c: CricHeroesCareer): string {
+  const parts = [`${c.matches} matches`];
+  if (c.batting) parts.push(`${(c.batting.runs ?? 0).toLocaleString("en-IN")} runs (SR ${f1(c.batting.strikeRate)})`);
+  if (c.bowling?.wickets) parts.push(`${c.bowling.wickets} wkts (econ ${f1(c.bowling.economy)})`);
+  return parts.join(" · ");
 }
 
 // ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@ import { strFromU8, unzipSync } from "fflate";
 import {
   applyNudge,
   batchBrief,
+  cricheroesCareers,
   marketNumbers,
   OUTPUT_SCHEMA,
   priceStep,
@@ -374,6 +375,7 @@ export async function loadInsights(db: SupabaseClient): Promise<PlayerInsight[]>
       hasNote: !!r?.summary,
       history: (v?.history ?? r?.valuation?.history ?? []).map(historyLine),
       statLines: hasStats(r?.stats) ? statLines(r.stats) : [],
+      cricheroes: hasStats(r?.stats) ? cricheroesCareers(r.stats) : [],
       // Only ever link to CricHeroes itself.
       cricheroesUrl: r?.cricheroes_url && /^https:\/\/(www\.)?cricheroes\.(com|in)\//.test(r.cricheroes_url) ? r.cricheroes_url : null,
     });

@@ -297,8 +297,13 @@ if (AI !== "none") {
   await ownerAct("wishlist.add", { playerId: wishPlayer.id });
   await postJson(owner2, "/api/actions/wishlist.add", { playerId: wishPlayer.id });
   requests.length = 0;
-  const fill = await postJson(owner, "/api/insights/fill", {});
-  check(fill.body?.data?.status === "written" && fill.body.data.written === status.batchSize, `the background fill writes ${status.batchSize} notes at a time`);
+  // The previous request may have gone out less than the background gap ago: come back when told.
+  let fill = await postJson(owner, "/api/insights/fill", {});
+  for (let t = 0; t < 5 && fill.body?.data?.status === "busy"; t++) {
+    await sleep(((fill.body.data.wait ?? 1) + 0.5) * 1000);
+    fill = await postJson(owner, "/api/insights/fill", {});
+  }
+  check(fill.body?.data?.status === "written" && fill.body.data.written === status.batchSize, `the background fill writes ${status.batchSize} notes at a time (${JSON.stringify(fill.body?.data)})`);
   check(namesIn(sent()[0] ?? { body: {}, url: "" })[0] === wishPlayer.name, "…starting with players on a wishlist");
   await ownerAct("wishlist.remove", { playerId: wishPlayer.id });
   await postJson(owner2, "/api/actions/wishlist.remove", { playerId: wishPlayer.id });
@@ -380,6 +385,8 @@ check(
   scoutText.includes("Fair price") && scoutText.includes("Sold for 30,000 in PPL 2") && (AI === "none" || scoutText.includes("Fake note for")),
   `owners see the ${region.toLowerCase()} card with previous prices${AI === "none" ? "" : " and the note"}`,
 );
+const ch = await scout.getByRole("group", { name: "CricHeroes stats" }).innerText().catch(() => "");
+check(/Tennis ball · 30 matches/.test(ch) && /Runs\s*500/.test(ch) && /SR\s*170/.test(ch), `the card shows the CricHeroes career (${ch.replace(/\s+/g, " ").slice(0, 80)})`);
 await scout.screenshot({ path: `${SHOTS}/ai-02-owner-card-${AI}.png` });
 
 await ownerAct("wishlist.add", { playerId: created[0].id });
@@ -416,6 +423,7 @@ const rivalText = await livePanel.getByRole("region", { name: "Rival watch" }).i
 const limit = Number((/Go up to ([\d,]+)/.exec(adviceText)?.[1] ?? "0").replace(/,/g, ""));
 // On the wishlist with max = fair: the owner's own max is the limit.
 check(limit === saved?.max_price, `bid advice for the player on the block: go up to your max (${limit})`);
+check(adviceText.includes("CricHeroes (tennis ball): 30 matches · 500 runs (SR 170)"), "the live panel shows the CricHeroes career too");
 check(adviceText.includes("Price guide: fair") && adviceText.includes("On your wishlist as Want"), `…with the reasons (${adviceText.replace(/\s+/g, " ").slice(0, 160)})`);
 check(/can bid/i.test(rivalText), `rival watch lists who can still bid (${rivalText.replace(/\s+/g, " ").slice(0, 80)})`);
 await livePanel.screenshot({ path: `${SHOTS}/ai-05-live-panel-${AI}.png` });
