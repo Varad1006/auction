@@ -431,7 +431,7 @@ await livePanel.screenshot({ path: `${SHOTS}/ai-05-live-panel-${AI}.png` });
 const publicStats = await fetch(`${APP}/api/stats`).then((r) => r.json());
 const mineStats = publicStats.stats?.find((x) => x.playerId === created[0].id);
 check(
-  mineStats && Object.keys(mineStats).sort().join() === "cricheroes,cricheroesUrl,playerId,statLines" && !JSON.stringify(publicStats).includes("price"),
+  mineStats && Object.keys(mineStats).sort().join() === "cricheroes,cricheroesUrl,playerId,statLines,tag" && !JSON.stringify(publicStats).includes("price"),
   "anyone can load players' stats: CricHeroes and PPL seasons only, no prices or notes",
 );
 const viewer = await (await browser.newContext({ ...devices["iPhone 13"] })).newPage();
@@ -444,6 +444,8 @@ await viewer.goto(`${APP}/players?pool=men`);
 await viewer.getByPlaceholder("Search players…").fill(names[0]);
 const publicCard = viewer.getByRole("listitem").filter({ hasText: names[0] }).getByRole("button").first();
 await publicCard.waitFor({ timeout: 15000 });
+const tag = await publicCard.getByText(/📈/).innerText({ timeout: 10000 }).catch(() => "");
+check(tag.includes("PPL 2: 240 runs"), `the players list shows each player's stats in a few words ("${tag}")`);
 await publicCard.click();
 await viewer.getByText("Tap the card to flip it.").waitFor();
 const cardStats = viewer.getByRole("region", { name: "Player stats" });

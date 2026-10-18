@@ -108,6 +108,22 @@ export function cricheroesCareers(stats: PlayerStats | null | undefined): CricHe
   return [tennis, overall && (!tennis || overall.matches > tennis.matches) ? overall : null].filter((c): c is CricHeroesCareer => !!c);
 }
 
+/**
+ * A few words for a player tile: the latest PPL season ("PPL 2: 240 runs ·
+ * 9 wkts"), else the CricHeroes career ("CricHeroes: 1,033 runs · 29 wkts").
+ */
+export function statsTag(stats: PlayerStats | null | undefined): string | null {
+  const parts = (runs: Num, wickets: Num) =>
+    [has(runs) && `${runs!.toLocaleString("en-IN")} runs`, has(wickets) && `${wickets} wkt${wickets === 1 ? "" : "s"}`].filter(Boolean).join(" · ");
+  for (const s of [...(stats?.seasons ?? [])].sort((a, b) => b.season - a.season)) {
+    const p = parts(s.batting?.runs ?? null, s.bowling?.wickets ?? null);
+    if (p) return `PPL ${s.season}: ${p}`;
+  }
+  const c = cricheroesCareers(stats)[0];
+  const p = c ? parts(c.batting?.runs ?? null, c.bowling?.wickets ?? null) : "";
+  return p ? `CricHeroes: ${p}` : null;
+}
+
 /** "66 matches · 1,033 runs (SR 161.2) · 29 wkts (econ 6.7)" */
 export function cricheroesShort(c: CricHeroesCareer): string {
   const parts = [`${c.matches} matches`];

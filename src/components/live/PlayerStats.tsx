@@ -10,6 +10,8 @@ import { useInsight } from "../owner/InsightsProvider";
 
 export interface PublicPlayerStats {
   playerId: string;
+  /** A few words for the player's tile ("PPL 2: 240 runs · 9 wkts"). */
+  tag: string | null;
   /** One line per PPL season. */
   statLines: string[];
   cricheroes: CricHeroesCareer[];
@@ -63,6 +65,13 @@ export function PlayerStats({ playerId, compact = false, always = false, classNa
       {stats.cricheroes.length > 0 && <CricHeroes careers={stats.cricheroes} url={stats.cricheroesUrl} compact={compact} />}
     </section>
   );
+}
+
+/** The player's stats in a few words, for tiles in the players list. */
+export function StatsTag({ playerId, className }: { playerId: string; className?: string }) {
+  const tag = usePlayerStats(playerId)?.tag;
+  if (!tag) return null;
+  return <p className={cn("truncate text-[11px] font-medium text-sky-200", className)}>📈 {tag}</p>;
 }
 
 /** "PPL 2 · P2 Royals: 177 runs in 8 inns (SR 173.5) …", latest season first. */

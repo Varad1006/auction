@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyNudge, batchBrief, cricheroesCareers, cricheroesShort, extractJson, marketNumbers, readAnswer, retryAfterSeconds, statLines, type BriefPlayer, type Market } from "@/lib/insights";
+import { applyNudge, batchBrief, cricheroesCareers, cricheroesShort, extractJson, statsTag, marketNumbers, readAnswer, retryAfterSeconds, statLines, type BriefPlayer, type Market } from "@/lib/insights";
 import { matchPlayers, nameKey, parseStatsFiles } from "@/lib/stats-import";
 import type { Valuation } from "@/lib/valuation";
 
@@ -126,6 +126,15 @@ describe("stats import", () => {
     expect(cricheroesShort(careers[1])).toBe("40 matches · 900 runs (SR 171.1) · 25 wkts (econ 7.1)");
     expect(cricheroesCareers({ cricheroesId: null, career: {}, seasons: [] })).toEqual([]);
     expect(cricheroesCareers(null)).toEqual([]);
+  });
+
+  it("sums a player up in a few words for the players list", () => {
+    expect(statsTag(arjun.stats)).toBe("PPL 2: 210 runs · 4 wkts");
+    const bina = parseStatsFiles(files).players.find((p) => p.name === "Bina Rao")!;
+    expect(statsTag(bina.stats)).toBe("PPL 2: 7 wkts");
+    // No PPL seasons: the CricHeroes career.
+    expect(statsTag({ ...arjun.stats, seasons: [] })).toBe("CricHeroes: 450 runs");
+    expect(statsTag({ cricheroesId: null, career: {}, seasons: [] })).toBeNull();
   });
 });
 

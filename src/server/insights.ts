@@ -11,6 +11,7 @@ import {
   priceStep,
   readAnswer,
   statLines,
+  statsTag,
   SYSTEM_PROMPT,
   type BriefPlayer,
   type GeneratedInsight,
@@ -388,6 +389,8 @@ export async function loadInsights(db: SupabaseClient): Promise<PlayerInsight[]>
 
 export interface PublicStats {
   playerId: string;
+  /** A few words for the player's tile. */
+  tag: string | null;
   statLines: string[];
   cricheroes: PlayerInsight["cricheroes"];
   cricheroesUrl: string | null;
@@ -405,7 +408,13 @@ export async function loadPublicStats(db: SupabaseClient): Promise<PublicStats[]
   }
   return (data as Pick<InsightRow, "player_id" | "stats" | "cricheroes_url">[]).flatMap((r) => {
     if (!hasStats(r.stats)) return [];
-    const out = { playerId: r.player_id, statLines: statLines(r.stats), cricheroes: cricheroesCareers(r.stats), cricheroesUrl: safeCricheroes(r.cricheroes_url) };
+    const out = {
+      playerId: r.player_id,
+      tag: statsTag(r.stats),
+      statLines: statLines(r.stats),
+      cricheroes: cricheroesCareers(r.stats),
+      cricheroesUrl: safeCricheroes(r.cricheroes_url),
+    };
     return out.statLines.length || out.cricheroes.length ? [out] : [];
   });
 }

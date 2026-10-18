@@ -8,7 +8,7 @@ import { PlayerDeckCard } from "../live/PlayerDeckCard";
 import { SigningBadge } from "../live/SigningBadge";
 import { TeamBadge } from "../live/TeamBadge";
 import { useAuction } from "../live/useAuction";
-import { PlayerStats } from "../live/PlayerStats";
+import { PlayerStats, StatsTag } from "../live/PlayerStats";
 import { AiPriceChip, AiScoutCard } from "../owner/AiScout";
 import { WishlistStar } from "../owner/WishlistStar";
 import { inputClass, Modal } from "../ui";
@@ -117,6 +117,7 @@ export function PlayersPage() {
                   <div className="p-2.5">
                     <p className="truncate font-bold">{p.name}</p>
                     <p className="truncate text-xs text-slate-400">{p.role}</p>
+                    <StatsTag playerId={p.id} className="mt-0.5" />
                     <div className="mt-1.5 flex items-center justify-between gap-1 text-xs">
                       {p.status === "sold" && team ? (
                         <>
@@ -149,12 +150,12 @@ export function PlayersPage() {
               unsold={live.status === "unsold"}
             />
             <p className="text-center text-xs text-slate-500">Tap the card to flip it.</p>
+            {/* Everyone sees the stats; owners get them in the scout card (not shown for sold players). */}
+            <PlayerStats playerId={live.id} always={live.status === "sold"} />
             <div className="flex justify-center">
               <WishlistStar playerId={live.id} playerName={live.name} disabled={live.status === "sold"} withLabel />
             </div>
             {live.status !== "sold" && <AiScoutCard playerId={live.id} />}
-            {/* Everyone sees the stats; owners get them in the scout card (not shown for sold players). */}
-            <PlayerStats playerId={live.id} always={live.status === "sold"} />
           </div>
         )}
       </Modal>
