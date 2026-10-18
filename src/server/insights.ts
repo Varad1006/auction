@@ -329,6 +329,9 @@ function poolContext(m: MarketData, pool: Pool): PoolContext | null {
   return { market, brief, maxBid, step, matchDays: m.matchDays, hasData: brief.some((p) => p.stats || p.valuation.history.length) };
 }
 
+/** Only ever link to CricHeroes itself. */
+const safeCricheroes = (url: string | null | undefined) => (url && /^https:\/\/(www\.)?cricheroes\.(com|in)\//.test(url) ? url : null);
+
 /** The AI's adjustment to the guide for a player with a note. */
 function nudgeOf(r: InsightRow): number {
   if (r.valuation?.nudge) return r.valuation.nudge;
@@ -376,12 +379,35 @@ export async function loadInsights(db: SupabaseClient): Promise<PlayerInsight[]>
       history: (v?.history ?? r?.valuation?.history ?? []).map(historyLine),
       statLines: hasStats(r?.stats) ? statLines(r.stats) : [],
       cricheroes: hasStats(r?.stats) ? cricheroesCareers(r.stats) : [],
-      // Only ever link to CricHeroes itself.
-      cricheroesUrl: r?.cricheroes_url && /^https:\/\/(www\.)?cricheroes\.(com|in)\//.test(r.cricheroes_url) ? r.cricheroes_url : null,
+      cricheroesUrl: safeCricheroes(r?.cricheroes_url),
     });
   }
   cached = { at: Date.now(), data: out };
   return out;
+}
+
+export interface PublicStats {
+  playerId: string;
+  statLines: string[];
+  cricheroes: PlayerInsight["cricheroes"];
+  cricheroesUrl: string | null;
+}
+
+/**
+ * Every player's CricHeroes career and PPL seasons, for everyone to see.
+ * Stats only: no prices, notes or previous auction prices.
+ */
+export async function loadPublicStats(db: SupabaseClient): Promise<PublicStats[]> {
+  const { data, error } = await db.from("player_insights").select("player_id, stats, cricheroes_url");
+  if (error) {
+    if (missingTable(error.code)) return [];
+    throw new InsightError(500, "db_error", "Could not load the stats");
+  }
+  return (data as Pick<InsightRow, "player_id" | "stats" | "cricheroes_url">[]).flatMap((r) => {
+    if (!hasStats(r.stats)) return [];
+    const out = { playerId: r.player_id, statLines: statLines(r.stats), cricheroes: cricheroesCareers(r.stats), cricheroesUrl: safeCricheroes(r.cricheroes_url) };
+    return out.statLines.length || out.cricheroes.length ? [out] : [];
+  });
 }
 
 // ---------------------------------------------------------------------------

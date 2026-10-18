@@ -428,9 +428,17 @@ check(adviceText.includes("Price guide: fair") && adviceText.includes("On your w
 check(/can bid/i.test(rivalText), `rival watch lists who can still bid (${rivalText.replace(/\s+/g, " ").slice(0, 80)})`);
 await livePanel.screenshot({ path: `${SHOTS}/ai-05-live-panel-${AI}.png` });
 
+const publicStats = await fetch(`${APP}/api/stats`).then((r) => r.json());
+const mineStats = publicStats.stats?.find((x) => x.playerId === created[0].id);
+check(
+  mineStats && Object.keys(mineStats).sort().join() === "cricheroes,cricheroesUrl,playerId,statLines" && !JSON.stringify(publicStats).includes("price"),
+  "anyone can load players' stats: CricHeroes and PPL seasons only, no prices or notes",
+);
 const viewer = await (await browser.newContext({ ...devices["iPhone 13"] })).newPage();
 await viewer.goto(`${APP}/live`);
-await viewer.waitForTimeout(2500);
+const stageStats = viewer.getByRole("region", { name: "Player stats" });
+const stageText = await stageStats.innerText({ timeout: 15000 }).catch(() => "");
+check(stageText.includes("PPL 2 · P2 Royals: 240 runs") && stageText.includes("CricHeroes (tennis ball): 30 matches"), "the public sees the player's PPL and CricHeroes stats on the live stage");
 check((await viewer.getByRole("region", { name: "AI suggestions" }).count()) === 0, "the public doesn't get the panel");
 await viewer.goto(`${APP}/players?pool=men`);
 await viewer.getByPlaceholder("Search players…").fill(names[0]);
@@ -438,10 +446,16 @@ const publicCard = viewer.getByRole("listitem").filter({ hasText: names[0] }).ge
 await publicCard.waitFor({ timeout: 15000 });
 await publicCard.click();
 await viewer.getByText("Tap the card to flip it.").waitFor();
-await viewer.waitForTimeout(1500);
+const cardStats = viewer.getByRole("region", { name: "Player stats" });
+const cardText = await cardStats.innerText({ timeout: 15000 }).catch(() => "");
 check(
-  (await viewer.getByRole("region", { name: /AI scout|Price guide/ }).count()) === 0 && (await viewer.getByText(/✨|📊/).count()) === 0,
-  "the public doesn't see prices or notes",
+  cardText.includes("PPL 2 · P2 Royals: 240 runs") && /Tennis ball · 30 matches/.test(cardText) && /Runs\s*500/.test(cardText),
+  "the public sees the player's PPL seasons and CricHeroes career on the card",
+);
+await viewer.screenshot({ path: `${SHOTS}/ai-06-public-card-${AI}.png`, fullPage: true });
+check(
+  (await viewer.getByRole("region", { name: /AI scout|Price guide/ }).count()) === 0 && (await viewer.getByText(/✨|📊|Fair price|Sold for/).count()) === 0,
+  "the public doesn't see prices, notes or previous auction prices",
 );
 await act("auction.returnToPool", {});
 await ownerAct("wishlist.remove", { playerId: created[0].id });

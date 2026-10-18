@@ -2,7 +2,8 @@
 
 import { useEffect } from "react";
 import { cn, money } from "@/lib/format";
-import { cricheroesShort, TIER_LABEL, type CricHeroesCareer, type PlayerInsight, type Tier } from "@/lib/insights";
+import { TIER_LABEL, type PlayerInsight, type Tier } from "@/lib/insights";
+import { CricHeroes, PplSeasons } from "../live/PlayerStats";
 import { useInsight, useInsights } from "./InsightsProvider";
 
 const TIER_STYLE: Record<Tier, string> = {
@@ -99,79 +100,11 @@ export function ScoutCard({ insight, compact, className, writing }: { insight: P
 
       {insight.cricheroes.length > 0 && <CricHeroes careers={insight.cricheroes} url={insight.cricheroesUrl} compact={compact} />}
 
-      {!compact && insight.statLines.length > 0 && (
-        <ul className="mt-2 space-y-0.5 border-t border-white/10 pt-2 text-[11px] text-slate-400" aria-label="PPL seasons">
-          {insight.statLines.map((l) => (
-            <li key={l}>{l}</li>
-          ))}
-        </ul>
-      )}
+      {!compact && insight.statLines.length > 0 && <PplSeasons lines={insight.statLines} className="mt-2 border-t border-white/10 pt-2" />}
 
       <p className="mt-2 text-[10px] text-slate-500">
         {insight.hasNote ? "AI suggestion from previous prices and stats" : "Worked out from previous auction prices and stats"}: use your own judgement.
       </p>
     </section>
-  );
-}
-
-const num = (n: number | null, digits = 0) => (n === null ? "–" : digits && !Number.isInteger(n) ? n.toFixed(digits) : n.toLocaleString("en-IN"));
-
-/** The player's CricHeroes career numbers: one line when compact, a small table otherwise. */
-function CricHeroes({ careers, url, compact }: { careers: CricHeroesCareer[]; url: string | null; compact?: boolean }) {
-  const link = url && (
-    <a href={url} target="_blank" rel="noreferrer noopener" className="underline">
-      profile
-    </a>
-  );
-  if (compact) {
-    const c = careers[0];
-    return (
-      <p className="mt-2 text-xs text-sky-100" aria-label="CricHeroes stats">
-        🏏 CricHeroes ({c.label.toLowerCase()}): {cricheroesShort(c)}
-        {link && <> · {link}</>}
-      </p>
-    );
-  }
-  return (
-    <div className="mt-2 space-y-2 rounded-lg bg-sky-500/10 p-2.5 ring-1 ring-sky-400/20" role="group" aria-label="CricHeroes stats">
-      <p className="flex items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-wider text-sky-200">
-        🏏 CricHeroes career
-        {link && <span className="font-medium normal-case tracking-normal">{link}</span>}
-      </p>
-      {careers.map((c) => (
-        <div key={c.label}>
-          <p className="text-xs font-semibold text-slate-200">
-            {c.label} · {c.matches} matches
-          </p>
-          <dl className="mt-1 flex flex-wrap gap-1 text-[11px] tabular-nums">
-            {[
-              ...(c.batting
-                ? [
-                    ["Runs", num(c.batting.runs)],
-                    ["Avg", num(c.batting.average, 1)],
-                    ["SR", num(c.batting.strikeRate, 1)],
-                    ["Best", c.batting.highest ?? "–"],
-                    ["50s", num(c.batting.fifties)],
-                    ["6s", num(c.batting.sixes)],
-                  ]
-                : []),
-              ...(c.bowling
-                ? [
-                    ["Wkts", num(c.bowling.wickets)],
-                    ["Econ", num(c.bowling.economy, 1)],
-                    ["Best", c.bowling.best ?? "–"],
-                  ]
-                : []),
-              ...(c.fielding ? [["Catches", num(c.fielding.catches)], ...(c.fielding.stumpings ? [["Stumpings", num(c.fielding.stumpings)]] : [])] : []),
-            ].map(([label, value], i) => (
-              <div key={`${label}-${i}`} className="rounded bg-slate-950/50 px-1.5 py-0.5">
-                <dt className="inline text-slate-400">{label} </dt>
-                <dd className="inline font-semibold text-slate-100">{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-      ))}
-    </div>
   );
 }

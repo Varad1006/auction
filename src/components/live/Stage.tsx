@@ -4,6 +4,7 @@ import { useState } from "react";
 import { POOL_LABEL } from "@/lib/types";
 import { BidStatus } from "./BidStatus";
 import { PlayerDeckCard } from "./PlayerDeckCard";
+import { PlayerStats } from "./PlayerStats";
 import { useAuction } from "./useAuction";
 import { Wheel } from "./Wheel";
 
@@ -84,13 +85,16 @@ export function Stage() {
             soldTo={soldTeam ? { team: soldTeam, price: player.sold_price ?? 0 } : null}
             unsold={state.phase === "unsold"}
           />
-          {state.phase === "spinning" || state.phase === "revealed" ? (
-            <p className="rounded-xl bg-amber-400/10 p-3 text-center text-sm font-semibold text-amber-200 ring-1 ring-amber-400/30">
-              Bidding opens shortly
-            </p>
-          ) : (
-            <BidStatus />
-          )}
+          <div className="space-y-3">
+            {state.phase === "spinning" || state.phase === "revealed" ? (
+              <p className="rounded-xl bg-amber-400/10 p-3 text-center text-sm font-semibold text-amber-200 ring-1 ring-amber-400/30">
+                Bidding opens shortly
+              </p>
+            ) : (
+              <BidStatus />
+            )}
+            <PlayerStats playerId={player.id} compact />
+          </div>
         </div>
       </div>
     );

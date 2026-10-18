@@ -8,6 +8,7 @@ import { PlayerDeckCard } from "../live/PlayerDeckCard";
 import { SigningBadge } from "../live/SigningBadge";
 import { TeamBadge } from "../live/TeamBadge";
 import { useAuction } from "../live/useAuction";
+import { PlayerStats } from "../live/PlayerStats";
 import { AiPriceChip, AiScoutCard } from "../owner/AiScout";
 import { WishlistStar } from "../owner/WishlistStar";
 import { inputClass, Modal } from "../ui";
@@ -152,6 +153,8 @@ export function PlayersPage() {
               <WishlistStar playerId={live.id} playerName={live.name} disabled={live.status === "sold"} withLabel />
             </div>
             {live.status !== "sold" && <AiScoutCard playerId={live.id} />}
+            {/* Everyone sees the stats; owners get them in the scout card (not shown for sold players). */}
+            <PlayerStats playerId={live.id} always={live.status === "sold"} />
           </div>
         )}
       </Modal>
