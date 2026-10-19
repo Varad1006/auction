@@ -1,5 +1,6 @@
 "use client";
 
+import { zipSync } from "fflate";
 import { useState } from "react";
 import { callAction } from "@/lib/api";
 import { cn, money } from "@/lib/format";
@@ -7,6 +8,7 @@ import { formatIncrementTiers, parseIncrementTiers } from "@/lib/rules";
 import { ownersOfOtherTeams } from "@/lib/teams";
 import { POOL_LABEL, POOLS, type Pool, type PoolConfig, type Team, type TeamPoolLimit } from "@/lib/types";
 import { useAuction } from "../live/useAuction";
+import { useToast } from "../Toast";
 import { Button, Card, Field, inputClass, useRunner } from "../ui";
 
 const num = (v: string) => v.replace(/\D/g, "");
@@ -16,12 +18,91 @@ export function SettingsManager() {
   if (!ready) return <p className="text-slate-400">Loading…</p>;
   return (
     <div className="space-y-6">
+      <BackupCard />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {POOLS.map((p) => configs[p] && <PoolConfigForm key={`${p}-${configs[p]!.updated_at}`} config={configs[p]!} />)}
       </div>
       <TeamsEditor teams={teams} limits={limits} />
       <DangerZone />
     </div>
+  );
+}
+
+function saveFile(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/** Downloads a full copy of the data: every table, and every stored photo and receipt. */
+function BackupCard() {
+  const toast = useToast();
+  const [busy, setBusy] = useState<"data" | "files" | null>(null);
+  const [progress, setProgress] = useState<string | null>(null);
+  const stamp = () => new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-");
+
+  async function data() {
+    setBusy("data");
+    try {
+      const res = await fetch("/api/admin/backup?part=data", { cache: "no-store" });
+      if (!res.ok) throw new Error("The backup couldn't be made");
+      const body = await res.json();
+      const rows = Object.values(body.tables as Record<string, unknown[]>).reduce((s, r) => s + r.length, 0);
+      saveFile(new Blob([JSON.stringify(body, null, 1)], { type: "application/json" }), `auction-backup-${stamp()}.json`);
+      const failed = Object.keys(body.errors ?? {});
+      toast(failed.length ? `Saved ${rows} rows; couldn't read: ${failed.join(", ")}` : `Saved ${rows} rows from ${Object.keys(body.tables).length} tables`, failed.length ? "error" : "success");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Backup failed", "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function files() {
+    setBusy("files");
+    try {
+      const res = await fetch("/api/admin/backup?part=files", { cache: "no-store" });
+      if (!res.ok) throw new Error("The file list couldn't be loaded");
+      const { files: list } = (await res.json()) as { files: { bucket: string; path: string; url: string }[] };
+      const zip: Record<string, Uint8Array> = {};
+      const missed: string[] = [];
+      for (const [i, f] of list.entries()) {
+        setProgress(`${i + 1} of ${list.length}`);
+        const r = await fetch(f.url).catch(() => null);
+        if (r?.ok) zip[`${f.bucket}/${f.path}`] = new Uint8Array(await r.arrayBuffer());
+        else missed.push(f.path);
+      }
+      // Photos and PDFs are already compressed: store them as they are.
+      saveFile(new Blob([zipSync(zip, { level: 0 }) as BlobPart], { type: "application/zip" }), `auction-files-${stamp()}.zip`);
+      toast(missed.length ? `Saved ${list.length - missed.length} files; ${missed.length} failed` : `Saved ${list.length} files`, missed.length ? "error" : "success");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Backup failed", "error");
+    } finally {
+      setBusy(null);
+      setProgress(null);
+    }
+  }
+
+  return (
+    <Card title="Backup">
+      <p className="mb-3 text-sm text-slate-400">
+        Download a full copy of the auction&apos;s data to keep on your computer: every table (players, teams, owners, registrations, bids, results,
+        wishlists, prices, stats and AI notes) and every stored photo and payment receipt. The files contain private details, so don&apos;t share them.
+      </p>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Button variant="primary" busy={busy === "data"} disabled={busy !== null} onClick={() => void data()}>
+          Download data (.json)
+        </Button>
+        <Button busy={busy === "files"} disabled={busy !== null} onClick={() => void files()}>
+          {progress ? `Downloading ${progress}…` : "Download photos & receipts (.zip)"}
+        </Button>
+      </div>
+    </Card>
   );
 }
 
