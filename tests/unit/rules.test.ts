@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { classifyHeader, parsePlayerImport, normalizeRole } from "@/lib/import";
-import { photoUrlFrom } from "@/lib/photos";
+import { photoSrc, photoUrlFrom } from "@/lib/photos";
 import { checkBid, incrementFor, minNextBid, parseIncrementTiers, quickBidAmounts, teamPoolSummary } from "@/lib/rules";
 import type { AuctionState, Player, PoolConfig } from "@/lib/types";
 
@@ -178,5 +178,17 @@ describe("bulk import", () => {
     expect(use["Flat Number"]).toBe("ignored (private)");
     expect(use["T-Shirt Size - Male"]).toBe("ignored");
     expect(use["Availability (Nov 2025) - 7:30 am till 1:00 pm"]).toBe("availability");
+  });
+});
+
+describe("photoSrc", () => {
+  it("serves Supabase and Drive photos as small cached copies", () => {
+    const sb = "https://abcd1234.supabase.co/storage/v1/object/public/player-photos/x/1.jpg";
+    expect(photoSrc(sb, 256)).toBe(`/_next/image?url=${encodeURIComponent(sb)}&w=256&q=75`);
+    expect(photoSrc("https://lh3.googleusercontent.com/d/abcdefghijk=w800", 96)).toMatch(/^\/_next\/image\?url=https%3A%2F%2Flh3/);
+    // Anything else (other hosts, private storage, local development) is left alone.
+    expect(photoSrc("https://example.com/a.jpg", 256)).toBe("https://example.com/a.jpg");
+    expect(photoSrc("https://abcd1234.supabase.co/storage/v1/object/sign/registrations/a.jpg?token=x", 256)).toMatch(/^https:/);
+    expect(photoSrc("http://127.0.0.1:54321/storage/v1/object/public/player-photos/a.jpg", 256)).toMatch(/^http:/);
   });
 });

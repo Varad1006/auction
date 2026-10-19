@@ -7,6 +7,15 @@ const buildId = `${process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "local"}-${
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   env: { NEXT_PUBLIC_BUILD_ID: buildId },
+  // Player photos go through the image optimizer (see photoSrc): resized,
+  // compressed and cached for a month, so Supabase serves each one rarely.
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "*.supabase.co", pathname: "/storage/v1/object/public/**" },
+      { protocol: "https", hostname: "lh3.googleusercontent.com" },
+    ],
+    minimumCacheTTL: 2678400,
+  },
   async headers() {
     return [
       {

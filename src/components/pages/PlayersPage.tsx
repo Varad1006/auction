@@ -12,6 +12,7 @@ import { PlayerStats, StatsTag } from "../live/PlayerStats";
 import { AiPriceChip, AiScoutCard } from "../owner/AiScout";
 import { WishlistStar } from "../owner/WishlistStar";
 import { inputClass, Modal } from "../ui";
+import { photoSrc } from "@/lib/photos";
 
 type Status = "pool" | "sold" | "unsold" | "all";
 const STATUS_LABEL: Record<Status, string> = { pool: "Remaining", sold: "Sold", unsold: "Unsold", all: "All" };
@@ -102,7 +103,7 @@ export function PlayersPage() {
                 >
                   <div className="relative aspect-[4/5] bg-slate-800">
                     {p.photo_url ? (
-                      <img src={p.photo_url} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+                      <img src={photoSrc(p.photo_url, 256)} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
                     ) : (
                       <span className="flex h-full items-center justify-center text-3xl font-black text-slate-600">{initials(p.name)}</span>
                     )}

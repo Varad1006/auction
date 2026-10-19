@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { cn, initials, money } from "@/lib/format";
+import { photoSrc } from "@/lib/photos";
 import { minNextBid } from "@/lib/rules";
 import { PLAYER_ROLES, POOL_LABEL, POOLS, type Player, type PlayerRole, type Pool } from "@/lib/types";
 import {
@@ -41,7 +42,7 @@ const PRIORITY_STYLE: Record<Priority, string> = {
 
 function Thumb({ player, className }: { player: Player; className?: string }) {
   return player.photo_url ? (
-    <img src={player.photo_url} alt="" loading="lazy" referrerPolicy="no-referrer" className={cn("shrink-0 rounded-lg object-cover", className)} />
+    <img src={photoSrc(player.photo_url, 256)} alt="" loading="lazy" referrerPolicy="no-referrer" className={cn("shrink-0 rounded-lg object-cover", className)} />
   ) : (
     <span className={cn("flex shrink-0 items-center justify-center rounded-lg bg-slate-700 text-sm font-bold", className)}>{initials(player.name)}</span>
   );

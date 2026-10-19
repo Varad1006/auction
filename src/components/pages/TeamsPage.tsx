@@ -6,6 +6,7 @@ import { POOL_LABEL, POOLS, type Player } from "@/lib/types";
 import { bySigningThenPrice, extrasText, SigningBadge } from "../live/SigningBadge";
 import { TeamOwners } from "../live/TeamOwners";
 import { useAuction } from "../live/useAuction";
+import { photoSrc } from "@/lib/photos";
 
 export function TeamsPage() {
   const { ready, teams, players, summaries, state } = useAuction();
@@ -142,7 +143,7 @@ export function TeamDetailPage({ teamId }: { teamId: string }) {
 
 function Avatar({ player, className }: { player: Player; className?: string }) {
   return player.photo_url ? (
-    <img src={player.photo_url} alt={player.name} title={player.name} referrerPolicy="no-referrer" className={cn("rounded-full object-cover", className)} />
+    <img src={photoSrc(player.photo_url, 96)} alt={player.name} title={player.name} referrerPolicy="no-referrer" className={cn("rounded-full object-cover", className)} />
   ) : (
     <span title={player.name} className={cn("flex items-center justify-center rounded-full bg-slate-700 text-xs font-bold", className)}>
       {initials(player.name)}

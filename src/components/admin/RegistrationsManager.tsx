@@ -199,7 +199,7 @@ function RegistrationRow({
     <li className="flex flex-col gap-3 rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/10 sm:flex-row">
       <a href={r.photo_url ?? undefined} target="_blank" rel="noreferrer" className="shrink-0">
         {r.photo_url ? (
-          <img src={r.photo_url} alt="" className="h-28 w-24 rounded-lg object-cover" />
+          <img src={r.photo_url} alt="" loading="lazy" decoding="async" className="h-28 w-24 rounded-lg object-cover" />
         ) : (
           <span className="flex h-28 w-24 items-center justify-center rounded-lg bg-slate-800 text-slate-500">No photo</span>
         )}

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { cn, initials, money, textOn } from "@/lib/format";
 import { POOL_LABEL, type Player, type Team } from "@/lib/types";
+import { photoSrc } from "@/lib/photos";
 
 const THEME = { ring: "from-amber-300 via-yellow-500 to-amber-700", chip: "bg-amber-400 text-amber-950", glow: "shadow-amber-500/30" };
 
@@ -59,7 +60,7 @@ export function PlayerDeckCard({
         {/* Front */}
         <div className="absolute inset-[3px] overflow-hidden rounded-[1.25rem] bg-slate-900 [backface-visibility:hidden]">
           {player.photo_url ? (
-            <img src={player.photo_url} alt="" className="absolute inset-0 h-full w-full object-cover" referrerPolicy="no-referrer" />
+            <img src={photoSrc(player.photo_url, 640)} alt="" className="absolute inset-0 h-full w-full object-cover" referrerPolicy="no-referrer" />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-slate-700 to-slate-900 text-7xl font-black text-slate-500">
               {initials(player.name)}
@@ -111,7 +112,7 @@ export function PlayerDeckCard({
         <div className="absolute inset-[3px] flex flex-col overflow-hidden rounded-[1.25rem] bg-slate-900 p-4 [backface-visibility:hidden] [transform:rotateY(180deg)]">
           <div className="flex items-center gap-3 border-b border-white/10 pb-3">
             {player.photo_url ? (
-              <img src={player.photo_url} alt="" className="h-12 w-12 rounded-full object-cover" referrerPolicy="no-referrer" />
+              <img src={photoSrc(player.photo_url, 96)} alt="" className="h-12 w-12 rounded-full object-cover" referrerPolicy="no-referrer" />
             ) : (
               <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-700 font-bold">{initials(player.name)}</span>
             )}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { cn, initials, money, textOn } from "@/lib/format";
 import { useAuction } from "./useAuction";
+import { photoSrc } from "@/lib/photos";
 
 /**
  * Slim bar pinned under the page tabs on phones, shown only while the block
@@ -31,7 +32,7 @@ export function LiveTicker({ watch }: { watch: React.RefObject<HTMLElement | nul
         className="toast-in mx-auto flex w-full max-w-xl items-center gap-3 rounded-2xl bg-slate-900/95 p-2 pr-3 text-left shadow-xl ring-1 ring-white/15 backdrop-blur"
       >
         {player.photo_url ? (
-          <img src={player.photo_url} alt="" className="h-10 w-10 shrink-0 rounded-xl object-cover" referrerPolicy="no-referrer" />
+          <img src={photoSrc(player.photo_url, 96)} alt="" className="h-10 w-10 shrink-0 rounded-xl object-cover" referrerPolicy="no-referrer" />
         ) : (
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-700 text-sm font-bold">{initials(player.name)}</span>
         )}

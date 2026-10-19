@@ -27,3 +27,16 @@ export function photoUrlFrom(raw: string | null | undefined): string | null {
   if (id) return `https://lh3.googleusercontent.com/d/${id}=w800`;
   return url.startsWith("https://") ? url.slice(0, 500) : null;
 }
+
+/** Widths the image optimizer serves (Next's default sizes). */
+export type PhotoWidth = 96 | 256 | 640 | 828;
+
+// Supabase Storage photos (and Google Drive ones) are resized, compressed and
+// cached by the site's image optimizer, so Supabase serves each photo about
+// once a month instead of on every page view (its free plan allows 5 GB).
+const OPTIMIZE = [/^https:\/\/[a-z0-9-]+\.supabase\.co\/storage\/v1\/object\/public\//, /^https:\/\/lh3\.googleusercontent\.com\//];
+
+/** A small, cached copy of a player photo, about `width` pixels wide. */
+export function photoSrc(url: string, width: PhotoWidth): string {
+  return OPTIMIZE.some((re) => re.test(url)) ? `/_next/image?url=${encodeURIComponent(url)}&w=${width}&q=75` : url;
+}

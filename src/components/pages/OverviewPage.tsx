@@ -7,6 +7,7 @@ import { RecentBids } from "../live/RecentBids";
 import { ResultsFeed } from "../live/ResultsFeed";
 import { TeamBadge } from "../live/TeamBadge";
 import { useAuction } from "../live/useAuction";
+import { photoSrc } from "@/lib/photos";
 
 export function OverviewPage() {
   const a = useAuction();
@@ -40,7 +41,7 @@ export function OverviewPage() {
         {onBlock ? (
           <div className="mt-3 flex items-center gap-4">
             {onBlock.photo_url ? (
-              <img src={onBlock.photo_url} alt="" className="h-20 w-16 rounded-xl object-cover" referrerPolicy="no-referrer" />
+              <img src={photoSrc(onBlock.photo_url, 256)} alt="" className="h-20 w-16 rounded-xl object-cover" referrerPolicy="no-referrer" />
             ) : (
               <span className="flex h-20 w-16 items-center justify-center rounded-xl bg-slate-700 text-xl font-bold">{initials(onBlock.name)}</span>
             )}

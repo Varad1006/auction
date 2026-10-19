@@ -6,6 +6,7 @@ import { cn, initials, money, textOn } from "@/lib/format";
 import { POOL_LABEL } from "@/lib/types";
 import { useAuction } from "../live/useAuction";
 import { Wheel } from "../live/Wheel";
+import { photoSrc } from "@/lib/photos";
 
 /**
  * Projector / big-screen view: large wheel, player, current bid and team
@@ -74,7 +75,7 @@ export function DisplayPage() {
         <div className="reveal relative aspect-[5/7] max-h-[78vh] w-full overflow-hidden rounded-[2vw] bg-gradient-to-br from-amber-300 via-yellow-500 to-amber-700 p-[0.35vw] shadow-2xl shadow-amber-500/30" key={player.id}>
           <div className="relative h-full w-full overflow-hidden rounded-[1.8vw] bg-slate-900">
             {player.photo_url ? (
-              <img src={player.photo_url} alt="" className="absolute inset-0 h-full w-full object-cover" referrerPolicy="no-referrer" />
+              <img src={photoSrc(player.photo_url, 828)} alt="" className="absolute inset-0 h-full w-full object-cover" referrerPolicy="no-referrer" />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center text-[10vw] font-black text-slate-600">{initials(player.name)}</div>
             )}
