@@ -50,7 +50,12 @@ export function OwnersManager() {
     e.preventDefault();
     const ok = await run(
       "save",
-      () => callAction("owner.upsert", { email: form.email, teamId: form.teamId, label: form.label || null }),
+      () =>
+        callAction("owner.upsert", {
+          email: form.email,
+          teamId: form.teamId,
+          label: form.label || null,
+        }),
       "Owner saved",
     );
     if (ok) {
@@ -62,19 +67,21 @@ export function OwnersManager() {
   const online = sessions.filter((s) => now - Date.parse(s.last_seen) < ONLINE_MS);
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
       <Card title="Team owners">
         <p className="mb-4 text-sm text-slate-400">
-          Each Gmail address belongs to one team. When that person signs in with Google they land on their team&apos;s dashboard
-          (wishlist, max prices, notes, plans and alerts) and can&apos;t see any other team&apos;s. A team can have several owners;
-          they share one dashboard. Bids are entered by the auctioneer. Changes apply on the owner&apos;s next page load; no need
-          to sign in again.
+          Each Gmail address belongs to one team. When that person signs in with Google they land on their team&apos;s dashboard (wishlist, max
+          prices, notes, plans and alerts) and can&apos;t see any other team&apos;s. A team can have several owners; they share one dashboard. Bids
+          are entered by the auctioneer. Changes apply on the owner&apos;s next page load; no need to sign in again.
         </p>
-        <form onSubmit={save} className="mb-5 grid gap-2 sm:grid-cols-[1fr_10rem_auto] sm:items-end">
-          <Field label="Gmail address">
+        <form onSubmit={save} className="mb-5 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:items-end">
+          <Field label="Gmail address" className="sm:col-span-2">
             <input
               className={inputClass}
               type="email"
+              inputMode="email"
+              autoCapitalize="none"
+              autoCorrect="off"
               required
               placeholder="owner@gmail.com"
               value={form.email}
@@ -91,12 +98,18 @@ export function OwnersManager() {
               ))}
             </select>
           </Field>
-          <Button type="submit" variant="primary" busy={busy === "save"}>
+          <Field label="Label (optional)">
+            <input
+              className={inputClass}
+              maxLength={60}
+              placeholder="e.g. Owner, Star player"
+              value={form.label}
+              onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
+            />
+          </Field>
+          <Button type="submit" variant="primary" busy={busy === "save"} className="sm:col-span-2">
             Add / update
           </Button>
-          <Field label="Label (optional)" className="sm:col-span-3">
-            <input className={inputClass} maxLength={60} placeholder="e.g. Captain" value={form.label} onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))} />
-          </Field>
         </form>
         {loadError && <p className="text-sm text-rose-300">{loadError}</p>}
         {owners === null ? (
@@ -105,44 +118,62 @@ export function OwnersManager() {
           <p className="text-sm text-slate-500">No owners yet.</p>
         ) : (
           <ul className="divide-y divide-white/5">
-            {owners.map((o) => {
-              const t = teamById.get(o.team_id);
-              return (
-                <li key={o.email} className="flex flex-wrap items-center gap-2 py-2.5">
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">{o.email}</span>
-                    {o.label && <span className="text-xs text-slate-500">{o.label}</span>}
-                  </span>
-                  <select
-                    className={cn(inputBase, "w-40 py-1.5 text-sm")}
-                    value={o.team_id}
-                    aria-label={`Team for ${o.email}`}
-                    onChange={(e) =>
-                      void run("move", () => callAction("owner.upsert", { email: o.email, teamId: e.target.value, label: o.label }), "Owner moved").then(load)
-                    }
-                  >
-                    {teams.map((tm) => (
-                      <option key={tm.id} value={tm.id}>
-                        {tm.name}
-                      </option>
-                    ))}
-                  </select>
-                  {t && <TeamBadge team={t} className="hidden sm:inline-flex" />}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-rose-300"
-                    busy={busy === `del-${o.email}`}
-                    onClick={() =>
-                      confirm(`Remove ${o.email} as an owner?`) &&
-                      run(`del-${o.email}`, () => callAction("owner.delete", { email: o.email }), "Owner removed").then(load)
-                    }
-                  >
-                    Remove
-                  </Button>
-                </li>
-              );
-            })}
+            {/* Grouped by team, in the teams' order. */}
+            {[...owners]
+              .sort(
+                (a, b) => teams.findIndex((t) => t.id === a.team_id) - teams.findIndex((t) => t.id === b.team_id) || a.email.localeCompare(b.email),
+              )
+              .map((o) => {
+                const t = teamById.get(o.team_id);
+                return (
+                  <li key={o.email} className="py-3">
+                    <div className="flex min-w-0 items-start justify-between gap-2">
+                      <span className="min-w-0">
+                        <span className="block break-all text-sm font-medium">{o.email}</span>
+                        {o.label && <span className="block text-xs text-slate-500">{o.label}</span>}
+                      </span>
+                      {t && <TeamBadge team={t} className="shrink-0" />}
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <select
+                        className={cn(inputBase, "min-w-0 flex-1 py-2 text-sm sm:max-w-[14rem]")}
+                        value={o.team_id}
+                        aria-label={`Team for ${o.email}`}
+                        onChange={(e) =>
+                          void run(
+                            "move",
+                            () =>
+                              callAction("owner.upsert", {
+                                email: o.email,
+                                teamId: e.target.value,
+                                label: o.label,
+                              }),
+                            "Owner moved",
+                          ).then(load)
+                        }
+                      >
+                        {teams.map((tm) => (
+                          <option key={tm.id} value={tm.id}>
+                            {tm.name}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="shrink-0 text-rose-300"
+                        busy={busy === `del-${o.email}`}
+                        onClick={() =>
+                          confirm(`Remove ${o.email} as an owner?`) &&
+                          run(`del-${o.email}`, () => callAction("owner.delete", { email: o.email }), "Owner removed").then(load)
+                        }
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </li>
+                );
+              })}
           </ul>
         )}
       </Card>

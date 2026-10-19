@@ -353,7 +353,7 @@ export function InsightsManager() {
           availability, scaled so the pool adds up to what the teams have left, and they follow the market as players are sold. Owners see them on
           player cards, their dashboard and the AI tab; nobody else does.
         </p>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {POOLS.map((pool) => {
             const c = counts(pool);
             const done = ai ? c.notes : c.priced;

@@ -72,7 +72,7 @@ export function PlayersPage() {
           ))}
         </div>
       </div>
-      <div className="grid gap-2 sm:grid-cols-[1fr_12rem]">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_12rem]">
         <input className={inputClass} placeholder="Search players…" value={q} onChange={(e) => setQ(e.target.value)} />
         <select className={inputClass} value={role} onChange={(e) => setRole(e.target.value)} aria-label="Role">
           <option value="">All roles</option>

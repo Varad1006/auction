@@ -16,7 +16,7 @@ export function SettingsManager() {
   if (!ready) return <p className="text-slate-400">Loading…</p>;
   return (
     <div className="space-y-6">
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {POOLS.map((p) => configs[p] && <PoolConfigForm key={`${p}-${configs[p]!.updated_at}`} config={configs[p]!} />)}
       </div>
       <TeamsEditor teams={teams} limits={limits} />

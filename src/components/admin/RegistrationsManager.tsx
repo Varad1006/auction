@@ -563,7 +563,7 @@ function PaymentsEditor({ initial, onSaved }: { initial: PaymentQr[]; onSaved: (
       {full ? (
         <p className="text-sm text-slate-500">Up to {PAYMENT_QR_MAX} QR codes. Remove one to add another.</p>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-[auto_1fr] sm:items-end">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[auto_1fr] sm:items-end">
           <label className="inline-flex cursor-pointer items-center justify-center rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold hover:bg-white/15">
             Upload QR image
             <input

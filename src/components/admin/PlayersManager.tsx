@@ -63,7 +63,7 @@ export function PlayersManager() {
         }
       >
         <SigningsSummary onEdit={(p) => setAssigning({ player: p, as: p.signing ?? "owner" })} />
-        <div className="grid gap-2 sm:grid-cols-[10rem_10rem_1fr]">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[10rem_10rem_1fr]">
           <select className={inputClass} value={pool} onChange={(e) => setPool(e.target.value as Pool | "all")} aria-label="Pool">
             <option value="all">All pools</option>
             {POOLS.map((p) => (

@@ -15,7 +15,7 @@ export function TeamsPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-extrabold">Teams</h1>
-      <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {teams.map((t) => {
           const roster = players.filter((p) => p.status === "sold" && p.sold_team_id === t.id).sort(bySigningThenPrice);
           const spent = roster.reduce((s, p) => s + (p.sold_price ?? 0), 0);
@@ -83,7 +83,7 @@ export function TeamDetailPage({ teamId }: { teamId: string }) {
         <h1 className="text-3xl font-black">{team.name}</h1>
         <TeamOwners team={team} players={players} className="mt-1" />
       </div>
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {POOLS.map((pool) => {
           const s = summaries(pool).get(team.id);
           const roster = players
