@@ -44,6 +44,8 @@ export function Wheel({
   startedAt,
   durationMs,
   onDone,
+  fromNow = false,
+  alwaysAnimate = false,
 }: {
   segments: Segment[];
   /** Omit the spin props to show a slowly idling wheel (nothing picked yet). */
@@ -51,9 +53,15 @@ export function Wheel({
   startedAt?: string;
   durationMs?: number;
   onDone?: () => void;
+  /** The spin started while this page was open: time it from now, not from
+   * startedAt, so a device whose clock is off still shows the whole spin. */
+  fromNow?: boolean;
+  /** Spin even when the device asks for reduced motion (the projector). */
+  alwaysAnimate?: boolean;
 }) {
   const idle = !targetId || !startedAt;
   const discRef = useRef<HTMLDivElement>(null);
+  const shownAt = useRef<number | null>(null);
   const doneRef = useRef(onDone ?? (() => {}));
   useEffect(() => {
     doneRef.current = onDone ?? (() => {});
@@ -81,8 +89,9 @@ export function Wheel({
   useEffect(() => {
     const disc = discRef.current;
     if (!disc || idle || !startedAt || durationMs === undefined) return;
-    const elapsed = Date.now() - Date.parse(startedAt);
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    shownAt.current ??= Date.now();
+    const elapsed = fromNow ? Date.now() - shownAt.current : Date.now() - Date.parse(startedAt);
+    const reduced = !alwaysAnimate && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     // Joined long after the spin (or clocks disagree a lot): show the result.
     if (reduced || !Number.isFinite(elapsed) || elapsed > durationMs + 3000) {
       disc.style.transform = `rotate(${finalRot}deg)`;
@@ -97,7 +106,7 @@ export function Wheel({
     });
     anim.onfinish = () => window.setTimeout(() => doneRef.current(), 500);
     return () => anim.cancel();
-  }, [finalRot, startedAt, durationMs, idle]);
+  }, [finalRot, startedAt, durationMs, idle, fromNow, alwaysAnimate]);
 
   return (
     <div className="relative mx-auto aspect-square w-full max-w-[min(88vw,440px)]">

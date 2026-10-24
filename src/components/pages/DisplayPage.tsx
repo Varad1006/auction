@@ -17,6 +17,8 @@ export function DisplayPage() {
   const { ready, state, player, playerById, teamById, activeBids, pool, config, counts, teams, summaries, results } = a;
   const [revealedSpin, setRevealedSpin] = useState<string | null>(null);
   const [resultAtLoad, setResultAtLoad] = useState<number | null | undefined>(undefined);
+  // Spin already under way when the page was opened (later ones are watched live).
+  const [spinAtLoad, setSpinAtLoad] = useState<string | null | undefined>(undefined);
   const origin = useSyncExternalStore(
     () => () => {},
     () => window.location.host,
@@ -24,6 +26,7 @@ export function DisplayPage() {
   );
   if (ready && state && resultAtLoad === undefined) {
     setResultAtLoad(state.phase === "sold" || state.phase === "unsold" ? state.last_result_id : null);
+    setSpinAtLoad(state.spin_started_at ?? null);
   }
 
   useEffect(() => {
@@ -63,7 +66,11 @@ export function DisplayPage() {
       <div className="flex h-full flex-col items-center justify-center gap-[2vh]">
         <p className="text-[2.2vw] font-black uppercase tracking-[0.3em] text-amber-300">Spinning…</p>
         <div className="w-[min(70vh,48vw)]">
-          <Wheel key={spinKey} segments={segments} targetId={state.current_player_id!} startedAt={spinKey!} durationMs={state.spin_duration_ms} onDone={() => setRevealedSpin(spinKey)} />
+          <Wheel key={spinKey} segments={segments} targetId={state.current_player_id!} startedAt={spinKey!} durationMs={state.spin_duration_ms}
+            fromNow={spinKey !== spinAtLoad}
+            alwaysAnimate
+            onDone={() => setRevealedSpin(spinKey)}
+          />
         </div>
       </div>
     );
